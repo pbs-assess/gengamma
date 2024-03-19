@@ -38,12 +38,13 @@ tweedie_p <- 1.5
 #Q_values <- c(-2, -1, -0.5, -0.001, -0.0001, -0.00001, 0.00001, 0.0001, 0.001, 0.4, 0.5, 1, 2)
 .gamma_q <- get_phi(family = 'gengamma-gamma-case', cv = cv, mu = 1)
 Q_values <- c(-5, -2, -1, -0.5, -0.001, 0.001, 0.5, round(.gamma_q, digits = 3), 1, 2, 5)
-# SLOW
-# gengamma_phi <- map_dbl(Q_values, ~ get_phi(family = 'gengamma', cv = cv, mu = 1, Q = .x))
-# dput(round(gengamma_phi, 3), file.path(out_dir, 'gengamma-phi.txt'))
-gengamma_phi <- dget(file.path(out_dir, 'gengamma-phi.txt'))
-
-# Simulate from binomial 
+if (!file.exists(file.path(out_dir, 'gengamma-phi.txt'))) {
+  gengamma_phi <- map_dbl(Q_values, ~ get_phi(family = 'gengamma', cv = cv, mu = 1, Q = .x))
+  dput(round(gengamma_phi, 5), file.path(out_dir, 'gengamma-phi.txt'))
+} else {
+  gengamma_phi <- dget(file.path(out_dir, 'gengamma-phi.txt'))
+}
+# Simulate from binomial
 binom_sim <- sdmTMB_simulate(
   formula = ~ 1,
   data = predictor_dat,
