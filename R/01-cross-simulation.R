@@ -84,7 +84,7 @@ sim_dat <- sdmTMB_simulate(
 # Get true index for later
 true_index <- sim_dat |>
   group_by(year) |>
-  summarise(biomass = sum(encounter_observed * mu))
+  summarise(biomass = sum(encounter_mu * mu))
 
 sampled <- sample_n(sim_dat, size = 4000) 
 # QUESTION: How many samples should be drawn? 
