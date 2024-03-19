@@ -153,8 +153,8 @@ if (run_self_check) {
       sampled |> 
         mutate(Q = .Q, 
               phi = .phi,
-              family = 'gengamma', 
-              error = rgengamma(n(), mean = true, sigma = .phi, Q = .Q))
+              family = 'gengamma',
+              error = rgengamma(n(), mean = mu, sigma = .phi, Q = .Q))
         }
       ) |>
       mutate(observed = exp(eta + log(error)))
