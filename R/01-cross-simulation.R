@@ -85,14 +85,17 @@ true_index <- sim_dat |>
   group_by(year) |>
   summarise(biomass = sum(encounter_observed * mu))
 
-sampled <- sample_n(sim_dat, size = 4000)
+sampled <- sample_n(sim_dat, size = 4000) 
+# QUESTION: How many samples should be drawn? 
+# I was looking at coverage from the real surveys which is ~5% of the survey grid / year (I think??)
+# But I think there are convergence issues with 4000 / 10000 as done here. 
 sampled_mesh <- make_mesh(sampled, c("X", "Y"), cutoff = 0.1)
 #plot(sampled_mesh[[1]])
 
 # Delta-lognormal
 # ----------------------------------
 # SIMULATE{y_i(i,m) = exp(rnorm(log(mu_i(i,m)) - pow(phi(m), Type(2)) / Type(2), phi(m)));}
-dln_sim <- sampled |>
+dl_sim <- sampled |>
   mutate(family = 'delta-lognormal', 
          phi = get_phi(family = 'lognormal', cv = cv),
          catch_observed = exp(rnorm(n(), log(mu) - 0.5 * phi^2, phi))
@@ -104,7 +107,7 @@ dln_sim <- sampled |>
 # s1 = exp(ln_phi(m));        // shape
 # s2 = mu_i(i,m) / s1;        // scale
 # SIMULATE{y_i(i,m) = rgamma(s1, s2);}
-dga_sim <- sampled |>
+dg_sim <- sampled |>
   mutate(family = 'delta-gamma', 
          phi = get_phi(family = 'gamma', cv = cv),
          catch_observed = rgamma(n(), shape = phi, scale = mu / phi)
@@ -129,46 +132,11 @@ dgg_sim <- purrr::map2_dfr(Q_values, gengamma_phi, \(.Q, .phi) {
   sampled |> 
     mutate(Q = .Q, 
            phi = .phi,
-           family = 'gengamma', 
+           family = 'delta-gengamma', 
            catch_observed = rgengamma(n(), mean = mu, sigma = .phi, Q = .Q))
     }
   ) |>
   mutate(observed = encounter_observed * catch_observed)
-
-save(predictor_dat, true_index, sampled, sampled_mesh, dln_sim, dga_sim, tw_sim, dgg_sim, Q_values, 
-  file = file.path(out_dir, "sim-families.RData"))
-
-# ----------------------------------
-# Non delta models - not used for now
-# ----------------------------------
-# Lognormal ----
-# SIMULATE{y_i(i,m) = exp(rnorm(log(mu_i(i,m)) - pow(phi(m), Type(2)) / Type(2), phi(m)));}
-ln_sim <- sampled |>
-  mutate(family = 'lognormal', 
-         phi = get_phi(family = 'lognormal', cv = cv),
-         observed = exp(rnorm(n(), log(mu) - 0.5 * phi^2, phi))
-  )
-# Gamma ----
-# s1 = exp(ln_phi(m));        // shape
-# s2 = mu_i(i,m) / s1;        // scale
-# SIMULATE{y_i(i,m) = rgamma(s1, s2);}
-# // s1 = Type(1) / (pow(phi, Type(2)));  // s1=shape, ln_phi=CV,shape=1/CV^2
-ga_sim <- sampled |>
-  mutate(family = 'gamma', 
-         phi = get_phi(family = 'gamma', cv = cv),
-         observed = rgamma(n(), shape = phi, scale = mu / phi)
-  )
-
-# Gengamma ----
-# SIMULATE{y_i(i,m) = sdmTMB::rgengamma(mu_i(i,m), phi(m), gengamma_Q);}
-gg_sim <- purrr::map2_dfr(Q_values, gengamma_phi, \(.Q, .phi) {
-  sampled |> 
-    mutate(Q = .Q, 
-           phi = .phi,
-           family = 'gengamma', 
-           observed = rgengamma(n(), mean = mu, sigma = .phi, Q = .Q))
-    }
-  )
 
 # Self check on gg Q estimation
 # ------------------------------------------------------------------------------

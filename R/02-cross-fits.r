@@ -1,96 +1,59 @@
 library(dplyr)
 library(ggplot2)
 library(purrr)
-devtools::load_all('../sdmTMB')
+library(sdmTMB)
 theme_set(theme_light())
 
 source(here::here('R', '00-utils.R'))
-load(file.path(here::here("data-outputs", "sim-families.RData")))
 fit_dir <- file.path(here::here("data-outputs", "fits"))
 
-# Deal with tweedie separately. Need to simulate model with binomial component?
-#.families <- c('lognormal', 'gamma', 'tweedie', 'gengamma')
-.families <- c('lognormal', 'gamma', 'gengamma')
+.families <- c('delta-lognormal', 'delta-gamma', 'tweedie', 'delta-gengamma')
 
-# Compare duration of sdmTMB calls with different fit families
-# ------------------------------------------------------------------------------
-benchmark_expr <- function(sim_dat, fit_family) {
-  sdmTMB(formula = observed ~ 1,
-      data = sim_dat,
-      mesh = sampled_mesh,
-      family = fit_family, 
-      spatial = "on", 
-      spatiotemporal = 'off'
-    )
-}
-
-test <- rbenchmark::benchmark(
-  "lognormal fit to log" = benchmark_expr(sim_dat = ln_sim, fit_family = sdmTMB::lognormal(link = 'log')),
-  "gamma fit to log" = benchmark_expr(sim_dat = ln_sim, fit_family = Gamma(link = 'log')),
-  #benchmark_expr(sim_dat = ln_sim, fit_family = sdmTMB::tweedie(link = 'log')),
-  "gengamma fit to log" = benchmark_expr(sim_dat = ln_sim, fit_family = sdmTMB::gengamma(link = 'log')),  
-  "lognormal fit to ga sim" = benchmark_expr(sim_dat = ga_sim, fit_family = sdmTMB::lognormal(link = 'log')),
-  "gamma fit to ga sim" = benchmark_expr(sim_dat = ga_sim, fit_family = Gamma(link = 'log')),
-  #benchmark_expr(sim_dat = ga_sim, fit_family = sdmTMB::tweedie(link = 'log')),
-  "gengamma fit to ga sim" = benchmark_expr(sim_dat = ga_sim, fit_family = sdmTMB::gengamma(link = 'log')),  
-  "lognormal fit to gg sim" = benchmark_expr(sim_dat = gg_sim, fit_family = sdmTMB::lognormal(link = 'log')),
-  "gamma fit to gg sim" = benchmark_expr(sim_dat = gg_sim, fit_family = Gamma(link = 'log')),
-  #benchmark_expr(sim_dat = gg_sim, fit_family = sdmTMB::tweedie(link = 'log')),
-  "gengamma fit to gg sim" = benchmark_expr(sim_dat = gg_sim, fit_family = sdmTMB::gengamma(link = 'log')),  
-  replications = 10, 
-  columns = c("test", "replications", "elapsed",
-                      "relative", "user.self", "sys.self")
-)
-beepr::beep()
+load(file.path(here::here("data-outputs", "sim-families.RData")))
+sim_df <- bind_rows(dl_sim, dg_sim, tw_sim, dgg_sim)
+cross_combos <- distinct(sim_df, family, Q) |>
+  tidyr::crossing(.fit_fam = .families) |>
+  rename(.sim_fam = 'family', .Q = "Q")
 
 # ------------------------------------------------------------------------------
-# Fit cross-simulation for data from all but gengamma
-ln_fits <- .families |>
-  purrr::map(\(x) fit_cross(fit_fam = x, .data = ln_sim, .mesh = sampled_mesh, sim_fam = 'lognormal'))
-
-ga_fits <- .families |>
-  purrr::map(\(x) fit_cross(fit_fam = x, .data = ga_sim, .mesh = sampled_mesh, sim_fam = 'gamma'))
-
-# tw_fits <- .families |>
-#   purrr::map(\(x) fit_cross(fit_fam = x, .data = tw_sim, .mesh = sampled_mesh, sim_fam = 'tweedie'))
-
-# Fit observed from gengamma distribution across different Q values ------------
-Q_fam_combos <- tidyr::crossing(.Q = Q_values, .fit_fam = .families)
-
-gg_cross_fits <- Q_fam_combos |>
-  pmap(\(.Q, .fit_fam) fit_cross(.data = gg_sim, .mesh = sampled_mesh, sim_fam = 'gengamma', 
-    .Q = .Q, fit_fam = .fit_fam))
-
-Q_sim_fam_combos <- tidyr::crossing(.Q = Q_values, 
-  .fit_fam = .families, 
-  .sim_fam = .families
+# Fit cross-simulations
+fits <- cross_combos |>
+  pmap(\(.sim_fam, .Q, .fit_fam) {
+    fit_cross(
+    .data = sim_df, # data filtering built into `fit_cross()`
+    .mesh = sampled_mesh, 
+    sim_fam = .sim_fam,
+    fit_fam = .fit_fam, 
+    .Q = .Q)
+  }
 )
+# saveRDS(fits, file.path(fit_dir, 'fits.rds'))
+# fits <- readRDS(file.path(fit_dir, 'fits.rds'))
 
-fit_list <- c(ln_fits, ga_fits, gg_cross_fits)
-#saveRDS(fit_list, file.path(fit_dir, 'fits.R'))
-#fit_list <- readRDS(file.path(fit_dir, 'fits.R'))
-
-fit_sanity <- map_dfr(fit_list, \(x) tibble(
-  sim_family = unique(x$data$family),
-  fit_family = x$family[[1]],
-  Q = unique(x$data$Q),
-  sanity_allok = sanity(x)$all_ok)
+fit_sanity <- map_dfr(fits, \(x) 
+  tibble(
+    sim_family = unique(x$data$family),
+    fit_family1 = family(x)[[1]][[1]],
+    fit_family2 = ifelse(family(x)[[1]][[1]] == 'tweedie', 'tweedie', family(x)[[2]][[1]]),
+    Q = unique(x$data$Q),
+    sanity_allok = sanity(x)$all_ok)
   )
 
+# Only get predictions for cases where sanity checks passed
 sanity_pass <- fit_sanity$sanity_allok
-
-pred_list <- fit_list[sanity_pass] |>
+pred_list <- fits[sanity_pass] |>
   map(predict, newdata = predictor_dat, return_tmb_object = TRUE)
 
 index_df <- map_dfr(pred_list, get_index_summary)
+index_df
 #beepr::beep()
-#saveRDS(index_df, file.path(here::here("data-outputs"), 'cross-fit-index-df.rds')
-#index_df <- readRDS(file.path(here::here("data-outputs"), 'cross-fit-index-df.rds'))
+saveRDS(index_df, file.path(here::here("data-outputs"), 'cross-fit-index-df.rds')
+index_df <- readRDS(file.path(here::here("data-outputs"), 'cross-fit-index-df.rds'))
 
-AIC_df <- map_dfr(fit_list, \(fit) tibble(
+AIC_df <- map_dfr(fits, \(fit) tibble(
   aic = AIC(fit),
   sim_family = unique(fit$data$family),
-  fit_family = fit$family[[1]], 
+  fit_family = ifelse(family(x)[[1]][[1]] == 'tweedie', 'tweedie', family(x)[[2]][[1]]), 
   Q = unique(fit$data$Q)
   )
 )
@@ -145,3 +108,39 @@ ggplot(data = _, aes(x = d_aic + 1, y = fit_family)) +
   geom_vline(xintercept = 1, linetype = 'dashed') +
   scale_x_continuous(trans = 'log10') +
   facet_wrap(~ title, scales = 'free_x')
+
+# Speed test
+# ------------------------------------------------------------------------------
+benchmark_expr <- function(sim_dat, fit_family) {
+  sdmTMB(formula = observed ~ 1,
+      data = sim_dat,
+      mesh = sampled_mesh,
+      family = fit_family, 
+      spatial = "on", 
+      spatiotemporal = 'off'
+    )
+}
+
+speed_test <- rbenchmark::benchmark(
+  "ln; dl" = benchmark_expr(sim_dat = dl_sim, fit_family = sdmTMB::delta_lognormal()),
+  "ln; dg" = benchmark_expr(sim_dat = dl_sim, fit_family = sdmTMB::delta_gamma()),
+  "ln; tw" = benchmark_expr(sim_dat = dl_sim, fit_family = sdmTMB::tweedie()),
+  "ln; dgg" = benchmark_expr(sim_dat = dl_sim, fit_family = sdmTMB::delta_gengamma()),
+  "dg; dl" = benchmark_expr(sim_dat = dg_sim, fit_family = sdmTMB::delta_lognormal()),
+  "dg; dg" = benchmark_expr(sim_dat = dg_sim, fit_family = sdmTMB::delta_gamma()),
+  "dg; tw" = benchmark_expr(sim_dat = dg_sim, fit_family = sdmTMB::tweedie()),
+  "dg; dgg" = benchmark_expr(sim_dat = dg_sim, fit_family = sdmTMB::delta_gengamma()),
+  "tw; dl" = benchmark_expr(sim_dat = tw_sim, fit_family = sdmTMB::delta_lognormal()),
+  "tw; dg" = benchmark_expr(sim_dat = tw_sim, fit_family = sdmTMB::delta_gamma()),
+  "tw; tw" = benchmark_expr(sim_dat = tw_sim, fit_family = sdmTMB::tweedie()),
+  "tw; gg" = benchmark_expr(sim_dat = tw_sim, fit_family = sdmTMB::delta_gengamma()),
+  "dgg Q = 0.5; dl" = benchmark_expr(sim_dat = dgg_sim |> filter(Q == 0.5), fit_family = sdmTMB::delta_lognormal()),
+  "dgg Q = 0.5; dg" = benchmark_expr(sim_dat = dgg_sim |> filter(Q == 0.5), fit_family = sdmTMB::delta_gamma()),
+  "dgg Q = 0.5; tw" = benchmark_expr(sim_dat = dgg_sim |> filter(Q == 0.5), fit_family = sdmTMB::tweedie()),
+  "dgg Q = 0.5; dgg" = benchmark_expr(sim_dat = dgg_sim |> filter(Q == 0.5), fit_family = sdmTMB::delta_gengamma()),
+  replications = 10, 
+  columns = c("test", "replications", "elapsed",
+                      "relative", "user.self", "sys.self")
+) |>
+  tidyr::separate(test, into = c('sim_family', 'fit_family'), sep = '; ')
+beepr::beep()

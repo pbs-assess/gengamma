@@ -58,16 +58,16 @@ get_phi <- function(cv, family, mu, p, Q) {
 
 # Fit models across families
 fit_cross <- function(.data, .mesh, sim_fam, .Q = NA, fit_fam) {
-  if (sim_fam == 'gengamma') {
-    dat <- .data |> filter(family == 'gengamma', Q == .Q)
+  if (sim_fam == 'delta-gengamma') {
+    dat <- .data |> filter(family == 'delta-gengamma', Q == .Q)
   } else {
-    dat <- .data |> filter(family == sim_fam, is.na(Q))
+    dat <- .data |> filter(family == sim_fam, is.na(.Q))
   }
 
   .family <- switch(fit_fam,
-      "gamma" = Gamma(link = "log"),
-      "lognormal" = lognormal(link = "log"),
-      "gengamma" = sdmTMB::gengamma(link = "log"),
+      "delta-gamma" = sdmTMB::delta_gamma(),
+      "delta-lognormal" = sdmTMB::delta_lognormal(),
+      "delta-gengamma" = sdmTMB::delta_gengamma(),
       "tweedie" = sdmTMB::tweedie(link = "log"),
       # Add more cases for other families if needed
       stop("Invalid family name")
@@ -88,8 +88,8 @@ get_index_summary <- function(predict_obj) {
   mutate(index, 
     sim_family = unique(predict_obj$fit_obj$data$family),
     sim_link = unique(predict_obj$fit_obj$data$link),
-    fit_family = predict_obj$fit_obj$family[[1]],
-    fit_link = predict_obj$fit_obj$family[[2]],
+    fit_family1 = family(predict_obj$fit_obj)[[1]][[1]],
+    fit_family2 = ifelse(fit_family1 == 'tweedie', 'tweedie', family(predict_obj$fit_obj)[[2]][[1]]),
     phi = unique(predict_obj$fit_obj$data$phi),
     Q = unique(predict_obj$fit_obj$data$Q),
     sigma_O = unique(predict_obj$fit_obj$data$sigma_O)
