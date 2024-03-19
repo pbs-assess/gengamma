@@ -1,7 +1,7 @@
 library(dplyr)
 library(tidyr)
 library(purrr)
-devtools::load_all('../sdmTMB')
+library(sdmTMB)
 
 source(here::here('R', '00-utils.R'))
 
@@ -38,10 +38,10 @@ tweedie_p <- 1.5
 #Q_values <- c(-2, -1, -0.5, -0.001, -0.0001, -0.00001, 0.00001, 0.0001, 0.001, 0.4, 0.5, 1, 2)
 .gamma_q <- get_phi(family = 'gengamma-gamma-case', cv = cv, mu = 1)
 Q_values <- c(-5, -2, -1, -0.5, -0.001, 0.001, 0.5, round(.gamma_q, digits = 3), 1, 2, 5)
-gengamma_phi <- map_dbl(Q_values, ~ get_phi(family = 'gengamma', cv = cv, mu = 1, Q = .x))
-# |--> SLOW; consider saving gengamma_phi values
-#saveRDS(gengamma_phi, file.path(out_dir, 'gengamma-phi.rds'))
-#gengamma_phi <- readRDS(file.path(out_dir, 'gengamma-phi.rds'))
+# SLOW
+# gengamma_phi <- map_dbl(Q_values, ~ get_phi(family = 'gengamma', cv = cv, mu = 1, Q = .x))
+# dput(round(gengamma_phi, 3), file.path(out_dir, 'gengamma-phi.txt'))
+gengamma_phi <- dget(file.path(out_dir, 'gengamma-phi.txt'))
 
 # Simulate from binomial 
 binom_sim <- sdmTMB_simulate(
@@ -77,107 +77,104 @@ sim_dat <- sdmTMB_simulate(
   mutate(family = 'lognormal', link = 'log', cv = cv,
          sigma_O = sigma_O, b0 = b0, Q = NA) |>
   tibble::as_tibble() |>
-  mutate(binom_mu = binom_sim$mu, 
-         binom_obs = binom_sim$observed) |>
-  rename(true = 'mu')
-  #select(-observed, -family, -link) |>
-
-# simulate a binomial example once 
-# then multiply the probabilities from that by the mean from the positive part from each of the others
-# i.e., the 'mu' from the binomial is the probability
-# the CV is basically fixed for a binomial model with 1 trial
-# all that matters is what the mean probability of observation is, 
-# i.e. the factor year coefficient (which is in logit space)
+  mutate(encounter_mu = binom_sim$mu, 
+         encounter_observed = binom_sim$observed)
 
 # Get true index for later
 true_index <- sim_dat |>
   group_by(year) |>
-  summarise(biomass = sum(true * binom_mu))
+  summarise(biomass = sum(encounter_observed * mu))
 
-sampled <- sample_n(sim_dat, size = 6000)
+sampled <- sample_n(sim_dat, size = 4000)
 sampled_mesh <- make_mesh(sampled, c("X", "Y"), cutoff = 0.1)
 #plot(sampled_mesh[[1]])
 
+# Delta-lognormal
+# ----------------------------------
+# SIMULATE{y_i(i,m) = exp(rnorm(log(mu_i(i,m)) - pow(phi(m), Type(2)) / Type(2), phi(m)));}
+dln_sim <- sampled |>
+  mutate(family = 'delta-lognormal', 
+         phi = get_phi(family = 'lognormal', cv = cv),
+         catch_observed = exp(rnorm(n(), log(mu) - 0.5 * phi^2, phi))
+  ) |>
+  mutate(observed = encounter_observed * catch_observed)
+
+# Delta-gamma
+# ----------------------------------
+# s1 = exp(ln_phi(m));        // shape
+# s2 = mu_i(i,m) / s1;        // scale
+# SIMULATE{y_i(i,m) = rgamma(s1, s2);}
+dga_sim <- sampled |>
+  mutate(family = 'delta-gamma', 
+         phi = get_phi(family = 'gamma', cv = cv),
+         catch_observed = rgamma(n(), shape = phi, scale = mu / phi)
+  ) |>
+  mutate(observed = encounter_observed * catch_observed)
+
+# Tweedie
+# ----------------------------------
+tw_sim <- sampled |>
+  mutate(family = 'tweedie', 
+         phi = get_phi(family = 'tweedie', cv = cv, p = tweedie_p, mu = exp(b0)), # Fix of tweedie phi for given mu
+         tweedie_p = tweedie_p,
+         catch_observed = fishMod::rTweedie(n(), mu = mu, phi = phi, p = tweedie_p)
+  ) |>
+  mutate(observed = encounter_observed * catch_observed)
+
+# Gengamma
+# ----------------------------------
+# tmp_ll = sdmTMB::dgengamma(y_i(i,m), mu_i(i,m), phi(m), gengamma_Q, true);
+# SIMULATE{y_i(i,m) = sdmTMB::rgengamma(mu_i(i,m), phi(m), gengamma_Q);}
+dgg_sim <- purrr::map2_dfr(Q_values, gengamma_phi, \(.Q, .phi) {
+  sampled |> 
+    mutate(Q = .Q, 
+           phi = .phi,
+           family = 'gengamma', 
+           catch_observed = rgengamma(n(), mean = mu, sigma = .phi, Q = .Q))
+    }
+  ) |>
+  mutate(observed = encounter_observed * catch_observed)
+
+save(predictor_dat, true_index, sampled, sampled_mesh, dln_sim, dga_sim, tw_sim, dgg_sim, Q_values, 
+  file = file.path(out_dir, "sim-families.RData"))
+
+# ----------------------------------
+# Non delta models - not used for now
+# ----------------------------------
 # Lognormal ----
 # SIMULATE{y_i(i,m) = exp(rnorm(log(mu_i(i,m)) - pow(phi(m), Type(2)) / Type(2), phi(m)));}
 ln_sim <- sampled |>
   mutate(family = 'lognormal', 
          phi = get_phi(family = 'lognormal', cv = cv),
-         error = exp(rnorm(n(), log(true) - 0.5 * phi^2, phi))
-  ) |>
-  mutate(observed = exp(log(true) + log(error)))
-# SIMULATE{y_i(i,m) = exp(rnorm(log(mu_i(i,m)) - pow(phi(m), Type(2)) / Type(2), phi(m)));}
-
-# ----------------------------------
-# trying to understand how to put together the delta model
-# ----------------------------------
-dln_sim <- ln_sim |>
-  mutate(family = 'delta-lognormal', 
-         observed = binom_obs * observed, 
-         delta_true = binom_mu * true)
-
-test <- sdmTMB(formula = observed ~ 1,
-    data = dln_sim,
-    mesh = sampled_mesh,
-    family = sdmTMB::delta_lognormal(), 
-    spatial = "on", 
-    spatiotemporal = 'off'
+         observed = exp(rnorm(n(), log(mu) - 0.5 * phi^2, phi))
   )
-
-test_pred <- predict(test, newdata = predictor_dat, return_tmb_object = TRUE)
-
-test_index <- get_index(test_pred, bias_correct = TRUE)
-# ----------------------------------
-
 # Gamma ----
-ga_sim <- sampled |>
-  mutate(family = 'gamma', 
-         phi = get_phi(family = 'gamma', cv = cv),
-         error = rgamma(n(), shape = phi, scale = true / phi)
-  ) |>
-  mutate(observed = exp(eta + log(error)))
 # s1 = exp(ln_phi(m));        // shape
 # s2 = mu_i(i,m) / s1;        // scale
 # SIMULATE{y_i(i,m) = rgamma(s1, s2);}
 # // s1 = Type(1) / (pow(phi, Type(2)));  // s1=shape, ln_phi=CV,shape=1/CV^2
-
-# Tweedie ----
-tw_sim <- sampled |>
-  mutate(family = 'tweedie', 
-         phi = get_phi(family = 'tweedie', cv = cv, p = tweedie_p, mu = exp(b0)), # QUESTION: correct fixing of mu???
-         tweedie_p = tweedie_p,
-         error = fishMod::rTweedie(n(), mu = true, phi = phi, p = tweedie_p)
-  ) |>
-  mutate(observed = exp(eta + log(error)))
-# looks ok??
-#sd(tw_sim$observed) / mean(tw_sim$observed)
+ga_sim <- sampled |>
+  mutate(family = 'gamma', 
+         phi = get_phi(family = 'gamma', cv = cv),
+         observed = rgamma(n(), shape = phi, scale = mu / phi)
+  )
 
 # Gengamma ----
-
+# SIMULATE{y_i(i,m) = sdmTMB::rgengamma(mu_i(i,m), phi(m), gengamma_Q);}
 gg_sim <- purrr::map2_dfr(Q_values, gengamma_phi, \(.Q, .phi) {
   sampled |> 
     mutate(Q = .Q, 
            phi = .phi,
            family = 'gengamma', 
-           error = rgengamma(n(), mean = true, sigma = .phi, Q = .Q))
+           observed = rgengamma(n(), mean = mu, sigma = .phi, Q = .Q))
     }
-  ) |>
-  mutate(observed = exp(eta + log(error)))
-# tmp_ll = sdmTMB::dgengamma(y_i(i,m), mu_i(i,m), phi(m), gengamma_Q, true);
-# SIMULATE{y_i(i,m) = sdmTMB::rgengamma(mu_i(i,m), phi(m), gengamma_Q);}
-
-
-
-save(predictor_dat, true_index, sampled, sampled_mesh, ln_sim, ga_sim, gg_sim, Q_values, 
-  file = file.path(out_dir, "sim-families.RData"))
-# save(predictor_dat, true_index, sampled, sampled_mesh, ln_sim, ga_sim, tw_sim, gg_sim, Q_values, 
-#   file = file.path(out_dir, "sim-families.RData"))
+  )
 
 # Self check on gg Q estimation
 # ------------------------------------------------------------------------------
 # Slow; also note that sanity check fails if Q is very negative, e.g., I tested with Q = -5
 run_self_check <- FALSE
-if (run_self_check) {
+if (run_self_check) { 
   local({
     .gamma_q <- get_phi(family = 'gengamma-gamma-case', cv = cv, mu = 1)
     Q_values <- c(-5, -2, -1, -0.5, -0.001, -0.0001, -0.00001, 0.00001, 0.0001, 0.001, 0.5, .gamma_q, 1, 2, 5)
