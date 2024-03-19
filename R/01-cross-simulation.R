@@ -54,7 +54,7 @@ binom_sim <- sdmTMB_simulate(
   range = 0.5, # Parameter that controls the decay of spatial correlation. If length 2, the spatial and spatiotemporal ranges will be unique.
   sigma_E = 0, # #sigma_E = 0.1,; SD of spatiotemporal process (Epsilon).
   seed = 42,
-  sigma_O = sigma_O, # #sigma_O = 0.2,; SD of spatial process (Omega)  
+  sigma_O = sigma_O, # #sigma_O = 0.2,; SD of spatial process (Omega)
   B = c(b0) # B0 = intercept, B1 = a1 slope;  A vector of beta values (fixed-effect coefficient values).
   #B = c(0.2, -0.4) # B0 = intercept, B1 = a1 slope
   ) |>
@@ -70,7 +70,7 @@ sim_dat <- sdmTMB_simulate(
     range = 0.5, # Parameter that controls the decay of spatial correlation. If length 2, the spatial and spatiotemporal ranges will be unique.
     phi = get_phi(family = 'lognormal', cv = cv), # Observation error scale parameter (e.g., SD in Gaussian).
     sigma_E = 0, # #sigma_E = 0.1,; SD of spatiotemporal process (Epsilon).
-    sigma_O = sigma_O, # #sigma_O = 0.2,; SD of spatial process (Omega)  
+    sigma_O = sigma_O, # #sigma_O = 0.2,; SD of spatial process (Omega)
     seed = 42,
     B = c(b0) # B0 = intercept, B1 = a1 slope;  A vector of beta values (fixed-effect coefficient values).
     #B = c(0.2, -0.4) # B0 = intercept, B1 = a1 slope
@@ -78,7 +78,7 @@ sim_dat <- sdmTMB_simulate(
   mutate(family = 'lognormal', link = 'log', cv = cv,
          sigma_O = sigma_O, b0 = b0, Q = NA) |>
   tibble::as_tibble() |>
-  mutate(encounter_mu = binom_sim$mu, 
+  mutate(encounter_mu = binom_sim$mu,
          encounter_observed = binom_sim$observed)
 
 # Get true index for later
@@ -89,15 +89,15 @@ true_index <- sim_dat |>
 sampled <- sample_n(sim_dat, size = 500)
 # QUESTION: How many samples should be drawn?
 # I was looking at coverage from the real surveys which is ~5% of the survey grid / year (I think??)
-# But I think there are convergence issues with 4000 / 10000 as done here. 
+# But I think there are convergence issues with 4000 / 10000 as done here.
 sampled_mesh <- make_mesh(sampled, c("X", "Y"), cutoff = 0.1)
-#plot(sampled_mesh[[1]])
+plot(sampled_mesh[[1]])
 
 # Delta-lognormal
 # ----------------------------------
 # SIMULATE{y_i(i,m) = exp(rnorm(log(mu_i(i,m)) - pow(phi(m), Type(2)) / Type(2), phi(m)));}
 dl_sim <- sampled |>
-  mutate(family = 'delta-lognormal', 
+  mutate(family = 'delta-lognormal',
          phi = get_phi(family = 'lognormal', cv = cv),
          catch_observed = exp(rnorm(n(), log(mu) - 0.5 * phi^2, phi))
   ) |>
@@ -109,7 +109,7 @@ dl_sim <- sampled |>
 # s2 = mu_i(i,m) / s1;        // scale
 # SIMULATE{y_i(i,m) = rgamma(s1, s2);}
 dg_sim <- sampled |>
-  mutate(family = 'delta-gamma', 
+  mutate(family = 'delta-gamma',
          phi = get_phi(family = 'gamma', cv = cv),
          catch_observed = rgamma(n(), shape = phi, scale = mu / phi)
   ) |>
@@ -118,7 +118,7 @@ dg_sim <- sampled |>
 # Tweedie
 # ----------------------------------
 tw_sim <- sampled |>
-  mutate(family = 'tweedie', 
+  mutate(family = 'tweedie',
          phi = get_phi(family = 'tweedie', cv = cv, p = tweedie_p, mu = exp(b0)), # Fix of tweedie phi for given mu
          tweedie_p = tweedie_p,
          catch_observed = fishMod::rTweedie(n(), mu = mu, phi = phi, p = tweedie_p)
@@ -130,10 +130,10 @@ tw_sim <- sampled |>
 # tmp_ll = sdmTMB::dgengamma(y_i(i,m), mu_i(i,m), phi(m), gengamma_Q, true);
 # SIMULATE{y_i(i,m) = sdmTMB::rgengamma(mu_i(i,m), phi(m), gengamma_Q);}
 dgg_sim <- purrr::map2_dfr(Q_values, gengamma_phi, \(.Q, .phi) {
-  sampled |> 
-    mutate(Q = .Q, 
+  sampled |>
+    mutate(Q = .Q,
            phi = .phi,
-           family = 'delta-gengamma', 
+           family = 'delta-gengamma',
            catch_observed = rgengamma(n(), mean = mu, sigma = .phi, Q = .Q))
     }
   ) |>
@@ -143,15 +143,15 @@ dgg_sim <- purrr::map2_dfr(Q_values, gengamma_phi, \(.Q, .phi) {
 # ------------------------------------------------------------------------------
 # Slow; also note that sanity check fails if Q is very negative, e.g., I tested with Q = -5
 run_self_check <- FALSE
-if (run_self_check) { 
+if (run_self_check) {
   local({
     .gamma_q <- get_phi(family = 'gengamma-gamma-case', cv = cv, mu = 1)
     Q_values <- c(-5, -2, -1, -0.5, -0.001, -0.0001, -0.00001, 0.00001, 0.0001, 0.001, 0.5, .gamma_q, 1, 2, 5)
     gengamma_phi <- map_dbl(Q_values, ~ get_phi(family = 'gengamma', cv = cv, mu = 1, Q = .x))
 
     gg_sim <- purrr::map2_dfr(Q_values, gengamma_phi, \(.Q, .phi) {
-      sampled |> 
-        mutate(Q = .Q, 
+      sampled |>
+        mutate(Q = .Q,
               phi = .phi,
               family = 'gengamma',
               error = rgengamma(n(), mean = mu, sigma = .phi, Q = .Q))
@@ -162,7 +162,7 @@ if (run_self_check) {
     gg_fits <- tibble(sim_fam = rep('gengamma', length(Q_values)), .Q = Q_values) |>
       purrr::pmap(fit_cross, .data = gg_sim, .mesh = sampled_mesh, fit_fam = 'gengamma')
 
-    Q_ests <- map_df(gg_fits, \(x) tibble(gengamma_Q = as.list(x$sd_report, 'Est')$gengamma_Q, 
+    Q_ests <- map_df(gg_fits, \(x) tibble(gengamma_Q = as.list(x$sd_report, 'Est')$gengamma_Q,
       Q_se = as.list(x$sd_report, 'Std')$gengamma_Q,
       sanity_allok = sanity(x)$all_ok)) |>
       mutate(.Q = Q_values)
