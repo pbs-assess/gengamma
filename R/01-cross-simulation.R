@@ -86,8 +86,8 @@ true_index <- sim_dat |>
   group_by(year) |>
   summarise(biomass = sum(encounter_mu * mu))
 
-sampled <- sample_n(sim_dat, size = 4000) 
-# QUESTION: How many samples should be drawn? 
+sampled <- sample_n(sim_dat, size = 500)
+# QUESTION: How many samples should be drawn?
 # I was looking at coverage from the real surveys which is ~5% of the survey grid / year (I think??)
 # But I think there are convergence issues with 4000 / 10000 as done here. 
 sampled_mesh <- make_mesh(sampled, c("X", "Y"), cutoff = 0.1)
