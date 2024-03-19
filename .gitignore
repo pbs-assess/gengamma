@@ -1,0 +1,7 @@
+.Rproj.user
+.Rhistory
+.DS_Store
+*.code-workspace
+*.pptx
+*.pdf
+R/scratch
