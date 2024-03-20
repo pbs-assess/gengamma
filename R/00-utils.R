@@ -88,11 +88,16 @@ get_index_summary <- function(predict_obj) {
   mutate(index, 
     sim_family = unique(predict_obj$fit_obj$data$family),
     sim_link = unique(predict_obj$fit_obj$data$link),
-    fit_family1 = family(predict_obj$fit_obj)[[1]][[1]],
-    fit_family2 = ifelse(fit_family1 == 'tweedie', 'tweedie', family(predict_obj$fit_obj)[[2]][[1]]),
+    #fit_family1 = family(predict_obj$fit_obj)[[1]][[1]],
+    fit_family = ifelse(family(predict_obj$fit_obj)[[1]][[1]] == 'tweedie', 'tweedie', family(predict_obj$fit_obj)[[2]][[1]]),
     phi = unique(predict_obj$fit_obj$data$phi),
     Q = unique(predict_obj$fit_obj$data$Q),
-    sigma_O = unique(predict_obj$fit_obj$data$sigma_O)
+    sigma_O = unique(predict_obj$fit_obj$data$sigma_O), 
+    aic = AIC(predict_obj$fit_obj)
   ) |>
   bind_rows()
+}
+
+beep <- function() {
+  if (Sys.info()[["user"]] == "jilliandunic") beepr::beep()
 }
