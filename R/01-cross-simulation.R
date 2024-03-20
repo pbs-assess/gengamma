@@ -6,7 +6,9 @@ library(sdmTMB)
 source(here::here('R', '00-utils.R'))
 
 dir.create(here::here('data-outputs'), showWarnings = FALSE, recursive = TRUE)
+dir.create(here::here('data-outputs', 'errors'), showWarnings = FALSE, recursive = TRUE)
 out_dir <- here::here('data-outputs')
+error_dir <- here::here('data-outputs', 'errors')
 
 # Steps:
 # 1. Simulate data from Lognormal, Gamma, Tweedie, and Gengamma
