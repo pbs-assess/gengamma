@@ -1,14 +1,17 @@
 library(dplyr)
 library(tidyr)
 library(purrr)
+library(ggplot2)
 library(sdmTMB)
 
 source(here::here('R', '00-utils.R'))
 
 dir.create(here::here('data-outputs'), showWarnings = FALSE, recursive = TRUE)
 dir.create(here::here('data-outputs', 'errors'), showWarnings = FALSE, recursive = TRUE)
+dir.create(here::here('figures'), showWarnings = FALSE, recursive = TRUE)
 out_dir <- here::here('data-outputs')
 error_dir <- here::here('data-outputs', 'errors')
+fig_dir <- here::here('figures')
 
 # Steps:
 # 1. Simulate data from Lognormal, Gamma, Tweedie, and Gengamma
@@ -198,8 +201,136 @@ sim_fit <- function(rep = NA) {
 # saveRDS(index_df, file.path(here::here("data-outputs"), 'cross-fit-index-df.rds'))
 # index_df <- readRDS(file.path(here::here("data-outputs"), 'cross-fit-index-df.rds'))
 }
+
+# ------------------------------------------------------------------------------
+# Cross-simulation
+# ------------------------------------------------------------------------------
+# Set up info for parallel runs of replicates
+is_rstudio <- !is.na(Sys.getenv("RSTUDIO", unset = NA))
+is_unix <- .Platform$OS.type == "unix"
+cores <- parallel::detectCores() - 2
+options(future.globals.maxSize = 800 * 1024 ^ 2) # 800 mb
+if (!is_rstudio && is_unix) {
+  future::plan(future::multicore, workers = cores)
+} else {
+  future::plan(future::multisession, workers = cores)
+}
+
+n_reps <- 100
+# index_df <- furrr::future_map_dfr(1:n_reps, ~sim_fit(rep = .x))
+# beep()
+# future::plan(future::sequential)
+# -------------------------------
+# Use version with progress bar
+progressr::handlers(global = TRUE)
+progressr::handlers("progress")
+prog_fxn <- function(xs) {
+  p <- progressr::progressor(along = xs)
+  furrr::future_map_dfr(xs, function(x) {
+    p(sprintf("x=%g", x))
+    sim_fit(rep = x)
+  })
+}
+future::plan(future::multicore, workers = cores)
+index_df <- prog_fxn(1:n_reps)
+beep()
+future::plan(future::sequential)
+# -------------------------------
+#saveRDS(index_df, file.path(out_dir, 'index_df.rds'))
+#index_df <- readRDS(file.path(out_dir, 'index_df.rds')) |> as_tibble()
+
+cross_combos <- bind_rows(
+  tibble(Q = NA, sim_family = c('delta-lognormal', 'delta-gamma', 'tweedie')),
+  tidyr::crossing(Q = Q_values, sim_family = 'delta-gengamma')
   ) |>
-  mutate(observed = encounter_observed * catch_observed)
+  tidyr::crossing(fit_family = c('lognormal', 'Gamma', 'tweedie', 'gengamma'))
+
+sanity_tally <- left_join(
+    cross_combos |> tidyr::unite(col = 'sim_combo_key', sim_family, Q, fit_family, sep = ":", remove = TRUE), 
+    index_df |> tidyr::unite(col = 'sim_combo_key', sim_family, Q, fit_family, sep = ":", remove = FALSE), 
+    by = c('sim_combo_key'))
+
+plot_df <- index_df |>
+  group_by(rep, sim_family, fit_family, Q, `_sdmTMB_time`) |>
+  mutate(RMSE = sqrt(mean((log(est) - log(true))^2)),
+         MRE = mean((est - true) / true),
+         covered = lwr < true & upr > true,
+         ci_width = upr - lwr,
+         title = ifelse(is.na(Q), sim_family, paste0(sim_family, ": Q=", signif(Q, digits = 2)))
+  ) |>
+  ungroup(fit_family) |>
+  mutate(min_aic = min(aic),
+         d_aic = aic - min_aic) |>
+  ungroup()
+title_levels <- unique(plot_df$title)
+title_levels <- c(title_levels[-1], title_levels[1])
+plot_df <- plot_df |>
+  mutate(title = factor(title, levels = title_levels))
+
+
+# - Compare: RMSE, MRE, coverage, AIC
+# - look at the consequence of selecting the wrong family (what does AIC choose)
+# - examine bias in estimates and how the above relates to the Q value
+theme_set(theme_light(base_size = 12))
+
+plot_violin <- function(.data, .x, .ncol = NULL) {
+  ggplot(data = .data, aes(x = {{.x}}, y = fit_family)) +
+    stat_summary(fun = mean, geom = "point") +
+    geom_violin(aes(col = fit_family), alpha = 0.5) +
+    geom_vline(xintercept = 0, linetype = 'dashed') +
+    scale_color_brewer(palette = "Dark2") +
+    facet_wrap(~ title, ncol = .ncol) + 
+    guides(colour = 'none') + 
+}
+
+plot_linedot <- function(.data, .x, .ncol = NULL) {
+  ggplot(data = .data, aes(x = {{.x}}, y = fit_family, colour = fit_family)) +
+  geom_linerange(xmin = 0, mapping = aes(xmax = {{.x}})) +
+  geom_point(size = 3) +
+  geom_vline(xintercept = 0.95, linetype = 'dashed') +
+  scale_color_brewer(palette = "Dark2") +
+  facet_wrap(~ title, ncol = .ncol) + 
+  guides(colour = 'none')
+}
+
+plot_violin(plot_df, .x = RMSE, .ncol = 5) + 
+  ggtitle('RMSE')
+ggsave(filename = file.path(fig_dir, 'rmse.png'), width = 11, height = 6.5)
+
+
+plot_violin(plot_df, .x = MRE, .ncol = 5) +
+  ggtitle('MRE')
+ggsave(filename = file.path(fig_dir, 'mre.png'), width = 11, height = 6.5)
+
+plot_violin(plot_df, .x = (d_aic + 1), .ncol = 5) + 
+  scale_x_continuous(trans = 'log10') + 
+  geom_vline(xintercept = 1, linetype = 'dashed') +
+  ggtitle("Delta AIC")
+ggsave(filename = file.path(fig_dir, 'daic.png'), width = 11, height = 6.5)
+
+plot_df |>
+  group_by(title, fit_family, Q, sim_family) |>
+  summarise(n_sanity_pass = n(), 
+            prop_covered = sum(covered) / n_sanity_pass
+         ) |>
+plot_linedot(.x = prop_covered, .ncol = 5) + 
+  ggtitle("95% CI Coverage")
+ggsave(filename = file.path(fig_dir, 'ci-coverage.png'), width = 11, height = 6.5)
+
+plot_violin(plot_df, .x = ci_width, .ncol = 5) +
+  scale_x_continuous(trans = 'log10') +
+  ggtitle("95% CI Width")
+ggsave(filename = file.path(fig_dir, 'ci-width.png'), width = 11, height = 6.5)
+
+sanity_tally |>
+  mutate(sanity_pass = ifelse(is.na(est), 0, 1)) |>
+  group_by(sim_family, Q, fit_family) |>
+  summarise(n_pass = sum(sanity_pass), pass_prop = n_pass / n_reps) |>
+  mutate(title = ifelse(is.na(Q), sim_family, paste0(sim_family, ": Q=", signif(Q, digits = 2)))) |>
+  mutate(title = factor(title, levels = title_levels)) |>
+plot_linedot(.x = pass_prop, .ncol = 5) +
+  ggtitle("Proportion of fits that passed sanity check")
+ggsave(filename = file.path(fig_dir, 'sanity-pass.png'), width = 11, height = 6.5)
 
 # Self check on gg Q estimation
 # ------------------------------------------------------------------------------
@@ -232,6 +363,6 @@ if (run_self_check) {
     Q_ests
     }
   )
-  beepr::beep()
+  beep()
 }
 # ------------------------------------------------------------------------------
