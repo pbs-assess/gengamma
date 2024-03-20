@@ -31,15 +31,14 @@ mesh_sim <- make_mesh(predictor_dat, xy_cols = c("X", "Y"), cutoff = 0.1)
 # Observation error scale parameter (e.g., SD in Gaussian).
 #cv_values <- c(0.2, 0.5, 0.8)
 cv <- 0.8 # lingcod wcvi cv ~0.83
-#phi <- get_phi(family = 'lognormal', cv = cv)
 b0 <- 0
-sigma_O <- 0.2
+sigma_O <- 0.6
 tweedie_p <- 1.5
 
 # Define the values of Q
-#Q_values <- c(-2, -1, -0.5, -0.001, -0.0001, -0.00001, 0.00001, 0.0001, 0.001, 0.4, 0.5, 1, 2)
-.gamma_q <- get_phi(family = 'gengamma-gamma-case', cv = cv, mu = 1)
-Q_values <- c(-5, -2, -1, -0.5, -0.001, 0.001, 0.5, round(.gamma_q, digits = 3), 1, 2, 5)
+# .gamma_q <- get_phi(family = 'gengamma-gamma-case', cv = cv, mu = 1)
+# Q_values <- c(-5, -2, -1, -0.5, -0.001, 0.001, 0.5, round(.gamma_q, digits = 3), 1, 2, 5)
+Q_values <- c(-5, -2, -1, -0.5, -0.001, 0.001, 0.5, 0.8, 1, 2, 5) # Hard code .gamma_q for now
 if (!file.exists(file.path(out_dir, 'gengamma-phi.txt'))) {
   gengamma_phi <- map_dbl(Q_values, ~ get_phi(family = 'gengamma', cv = cv, mu = 1, Q = .x))
   dput(round(gengamma_phi, 5), file.path(out_dir, 'gengamma-phi.txt'))
