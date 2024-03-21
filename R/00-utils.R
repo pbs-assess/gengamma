@@ -29,6 +29,8 @@ get_dgmu <- function(Q, sigma, mean) {
   mu
 }
 
+get_gamma_cv <- function(phi) 1 / sqrt(phi)
+
 get_phi <- function(cv, family, mu, p, Q) {
   # Numeric solution to get sigma for desired_cv
   f <- function(sigma, q = Q, desired_cv = cv) {
