@@ -33,10 +33,11 @@ mesh_sim <- make_mesh(predictor_dat, xy_cols = c("X", "Y"), cutoff = 0.1)
 
 # Observation error scale parameter (e.g., SD in Gaussian).
 #cv_values <- c(0.2, 0.5, 0.8)
-cv <- 0.8 # lingcod wcvi cv ~0.83
+cv <- c(0.8, 0.95)[2] # lingcod wcvi cv ~0.83; dogfish wcvi gamma cv ~0.95
 b0 <- 0
-sigma_O <- 0.6
+sigma_O <- c(0.6, 1.0, 1.75, 3.2)[2] #dogfish wcvi gamma ~1.0
 tweedie_p <- 1.5
+tag <- paste0('-cv', cv, '-sigma_O', sigma_O)
 
 # Define the values of Q
 # .gamma_q <- get_phi(family = 'gengamma-gamma-case', cv = cv, mu = 1)
@@ -83,10 +84,10 @@ sim_fit <- function(rep = NA, get_simulation_output = FALSE) {
       #B = c(0.2, -0.4) # B0 = intercept, B1 = a1 slope
     ) |>
     mutate(family = 'lognormal', link = 'log', cv = cv,
-          sigma_O = sigma_O, b0 = b0, Q = NA) |>
+           sigma_O = sigma_O, b0 = b0, Q = NA) |>
     tibble::as_tibble() |>
     mutate(encounter_mu = binom_sim$mu,
-          encounter_observed = binom_sim$observed)
+           encounter_observed = binom_sim$observed)
 
   # Get true index for later
   true_index <- sim_dat |>
@@ -212,9 +213,9 @@ sim_fit <- function(rep = NA, get_simulation_output = FALSE) {
 }
 
 # Save one run of simulated data objects for benchmarking
-set.seed(42)
-sim_list <- sim_fit(1, get_simulation_output = TRUE)
-saveRDS(sim_list, file.path(out_dir, 'sim-list.rds'))
+# set.seed(42)
+# sim_list <- sim_fit(1, get_simulation_output = TRUE)
+# saveRDS(sim_list, file.path(out_dir, 'sim-list.rds'))
 
 # ------------------------------------------------------------------------------
 # Cross-simulation
@@ -250,13 +251,17 @@ prog_fxn <- function(xs) {
     sim_fit(rep = x)
   })
 }
-future::plan(future::multicore, workers = cores)
-index_df <- prog_fxn(1:n_reps)
-beep()
-future::plan(future::sequential)
+message("\tChecking for index file tag: \n\t   ", tag)
+if (!file.exists(file.path(out_dir, paste0('index-df', tag, '.rds')))) {
+  future::plan(future::multicore, workers = cores)
+  index_df <- prog_fxn(1:n_reps)
+  beep()
+  future::plan(future::sequential)
+  saveRDS(index_df, file.path(out_dir, paste0('index-df', tag, '.rds')))
+} else {
+  index_df <- readRDS(file.path(out_dir, paste0('index-df', tag, '.rds'))) |> as_tibble()
+}
 # -------------------------------
-#saveRDS(index_df, file.path(out_dir, 'index-df.rds'))
-#index_df <- readRDS(file.path(out_dir, 'index-df.rds')) |> as_tibble()
 
 cross_combos <- bind_rows(
   tibble(Q = NA, sim_family = c('delta-lognormal', 'delta-gamma', 'tweedie')),
@@ -299,7 +304,7 @@ plot_violin <- function(.data, .x, .ncol = NULL) {
     geom_vline(xintercept = 0, linetype = 'dashed') +
     scale_color_brewer(palette = "Dark2") +
     facet_wrap(~ title, ncol = .ncol) +
-    guides(colour = 'none') +
+    guides(colour = 'none')
 }
 
 plot_linedot <- function(.data, .x, .ncol = NULL) {
@@ -313,19 +318,19 @@ plot_linedot <- function(.data, .x, .ncol = NULL) {
 }
 
 plot_violin(plot_df, .x = RMSE, .ncol = 5) +
-  ggtitle('RMSE')
-ggsave(filename = file.path(fig_dir, 'rmse.png'), width = 11, height = 6.5)
+  ggtitle(paste0("RMSE", " CV = ", cv, "; Sigma_O = ", sigma_O))
+ggsave(filename = file.path(fig_dir, paste0('rmse', tag, '.png')), width = 11, height = 6.5)
 
 
 plot_violin(plot_df, .x = MRE, .ncol = 5) +
-  ggtitle('MRE')
-ggsave(filename = file.path(fig_dir, 'mre.png'), width = 11, height = 6.5)
+  ggtitle(paste0("MRE", " CV = ", cv, "; Sigma_O = ", sigma_O))
+ggsave(filename = file.path(fig_dir, paste0('mre', tag, '.png')), width = 11, height = 6.5)
 
 plot_violin(plot_df, .x = (d_aic + 1), .ncol = 5) +
   scale_x_continuous(trans = 'log10') +
   geom_vline(xintercept = 1, linetype = 'dashed') +
-  ggtitle("Delta AIC")
-ggsave(filename = file.path(fig_dir, 'daic.png'), width = 11, height = 6.5)
+  ggtitle(paste0("Delta AIC", " CV = ", cv, "; Sigma_O = ", sigma_O))
+ggsave(filename = file.path(fig_dir, paste0('daic', tag, '.png')), width = 11, height = 6.5)
 
 plot_df |>
   group_by(title, fit_family, Q, sim_family) |>
@@ -333,13 +338,13 @@ plot_df |>
             prop_covered = sum(covered) / n_sanity_pass
          ) |>
 plot_linedot(.x = prop_covered, .ncol = 5) +
-  ggtitle("95% CI Coverage")
-ggsave(filename = file.path(fig_dir, 'ci-coverage.png'), width = 11, height = 6.5)
+  ggtitle(paste0("95% CI Coverage", " CV = ", cv, "; Sigma_O = ", sigma_O))
+ggsave(filename = file.path(fig_dir, paste0('ci-coverage', tag, '.png')), width = 11, height = 6.5)
 
 plot_violin(plot_df, .x = ci_width, .ncol = 5) +
   scale_x_continuous(trans = 'log10') +
-  ggtitle("95% CI Width")
-ggsave(filename = file.path(fig_dir, 'ci-width.png'), width = 11, height = 6.5)
+  ggtitle(paste0("95% CI Width", " CV = ", cv, "; Sigma_O = ", sigma_O))
+ggsave(filename = file.path(fig_dir, paste0('ci-width', tag, '.png')), width = 11, height = 6.5)
 
 sanity_tally |>
   mutate(sanity_pass = ifelse(is.na(est), 0, 1)) |>
@@ -348,8 +353,8 @@ sanity_tally |>
   mutate(title = ifelse(is.na(Q), sim_family, paste0(sim_family, ": Q=", signif(Q, digits = 2)))) |>
   mutate(title = factor(title, levels = title_levels)) |>
 plot_linedot(.x = pass_prop, .ncol = 5) +
-  ggtitle("Proportion of fits that passed sanity check")
-ggsave(filename = file.path(fig_dir, 'sanity-pass.png'), width = 11, height = 6.5)
+  ggtitle(paste0("Passed sanity check", " CV = ", cv, "; Sigma_O = ", sigma_O))
+ggsave(filename = file.path(fig_dir, paste0('sanity-pass', tag, '.png')), width = 11, height = 6.5)
 
 # Self check on gg Q estimation
 # ------------------------------------------------------------------------------
