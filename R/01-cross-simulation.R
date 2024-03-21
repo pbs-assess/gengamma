@@ -49,7 +49,7 @@ if (!file.exists(file.path(out_dir, 'gengamma-phi.txt'))) {
   gengamma_phi <- dget(file.path(out_dir, 'gengamma-phi.txt'))
 }
 
-sim_fit <- function(rep = NA, get_simdf = FALSE) {
+sim_fit <- function(rep = NA, get_simulation_output = FALSE) {
   # QUESTION: Does the seed need to be the same for the binom_sim component and the positive component?
   # Simulate from binomial
   binom_sim <- sdmTMB_simulate(
@@ -209,13 +209,13 @@ sim_fit <- function(rep = NA, get_simdf = FALSE) {
 
   index_df |>
     mutate(true = pull(true_index, 'biomass'))
-# saveRDS(index_df, file.path(here::here("data-outputs"), 'cross-fit-index-df.rds'))
-# index_df <- readRDS(file.path(here::here("data-outputs"), 'cross-fit-index-df.rds'))
 }
 
-# For benchmarking
-sim_df <- sim_fit(1, get_simdf = TRUE)
-saveRDS(sim_df, file.path(out_dir, 'sim_df.RDS'))
+# Save one run of simulated data objects for benchmarking
+set.seed(42)
+sim_list <- sim_fit(1, get_simulation_output = TRUE)
+saveRDS(sim_list, file.path(out_dir, 'sim-list.rds'))
+
 # ------------------------------------------------------------------------------
 # Cross-simulation
 # ------------------------------------------------------------------------------
@@ -231,11 +231,16 @@ if (!is_rstudio && is_unix) {
 }
 
 n_reps <- 100
+
+# Non progress-tracking version:
+# -------------------------------
 # index_df <- furrr::future_map_dfr(1:n_reps, ~sim_fit(rep = .x))
 # beep()
 # future::plan(future::sequential)
+
 # -------------------------------
 # Use version with progress bar
+# -------------------------------
 progressr::handlers(global = TRUE)
 progressr::handlers("progress")
 prog_fxn <- function(xs) {
