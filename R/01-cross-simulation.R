@@ -49,7 +49,8 @@ if (!file.exists(file.path(out_dir, 'gengamma-phi.txt'))) {
   gengamma_phi <- dget(file.path(out_dir, 'gengamma-phi.txt'))
 }
 
-sim_fit <- function(rep = NA) {
+sim_fit <- function(rep = NA, get_simdf = FALSE) {
+  # QUESTION: Does the seed need to be the same for the binom_sim component and the positive component?
   # Simulate from binomial
   binom_sim <- sdmTMB_simulate(
     formula = ~ 1,
@@ -150,9 +151,19 @@ sim_fit <- function(rep = NA) {
   # ------------------------------------------------------------------------------
   .families <- c('delta-lognormal', 'delta-gamma', 'tweedie', 'delta-gengamma')
   sim_df <- bind_rows(dl_sim, dg_sim, tw_sim, dgg_sim)
+
+  if (get_simulation_output) {
+    sim_list <- list(sim_df = sim_df, 
+      sampled = sampled, 
+      sampled_mesh = sampled_mesh, 
+      true_index = true_index)
+    return(sim_list)
+  }
+
   cross_combos <- distinct(sim_df, family, Q) |>
     tidyr::crossing(.fit_fam = .families) |>
     rename(.sim_fam = 'family', .Q = "Q")
+
   fits <- cross_combos |>
     pmap(\(.sim_fam, .Q, .fit_fam) {
       tryCatch({
@@ -202,6 +213,9 @@ sim_fit <- function(rep = NA) {
 # index_df <- readRDS(file.path(here::here("data-outputs"), 'cross-fit-index-df.rds'))
 }
 
+# For benchmarking
+sim_df <- sim_fit(1, get_simdf = TRUE)
+saveRDS(sim_df, file.path(out_dir, 'sim_df.RDS'))
 # ------------------------------------------------------------------------------
 # Cross-simulation
 # ------------------------------------------------------------------------------
