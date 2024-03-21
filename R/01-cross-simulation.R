@@ -153,9 +153,9 @@ sim_fit <- function(rep = NA, get_simulation_output = FALSE) {
   sim_df <- bind_rows(dl_sim, dg_sim, tw_sim, dgg_sim)
 
   if (get_simulation_output) {
-    sim_list <- list(sim_df = sim_df, 
-      sampled = sampled, 
-      sampled_mesh = sampled_mesh, 
+    sim_list <- list(sim_df = sim_df,
+      sampled = sampled,
+      sampled_mesh = sampled_mesh,
       true_index = true_index)
     return(sim_list)
   }
@@ -169,11 +169,11 @@ sim_fit <- function(rep = NA, get_simulation_output = FALSE) {
       tryCatch({
         fit_cross(
           .data = sim_df, # data filtering built into `fit_cross()`
-          .mesh = sampled_mesh, 
+          .mesh = sampled_mesh,
           sim_fam = .sim_fam,
-          fit_fam = .fit_fam, 
+          fit_fam = .fit_fam,
           .Q = .Q)
-        }, 
+        },
         error = function(e) {
           error_out <- sim_df |>
             mutate(fit_family = .fit_fam, rep = rep)
@@ -187,7 +187,7 @@ sim_fit <- function(rep = NA, get_simulation_output = FALSE) {
   # saveRDS(fits, file.path(fit_dir, 'fits.rds'))
   # fits <- readRDS(file.path(fit_dir, 'fits.rds'))
 
-  fit_sanity <- map_dfr(fits, \(x) 
+  fit_sanity <- map_dfr(fits, \(x)
     tibble(
       sim_family = unique(x$data$family),
       #fit_family1 = family(x)[[1]][[1]],
@@ -202,7 +202,7 @@ sim_fit <- function(rep = NA, get_simulation_output = FALSE) {
     map(predict, newdata = predictor_dat, return_tmb_object = TRUE)
 
   index_df <- map_dfr(pred_list, get_index_summary)
-  
+
   if (!is.na(rep)) {
     index_df$rep = rep
   }
@@ -255,8 +255,8 @@ index_df <- prog_fxn(1:n_reps)
 beep()
 future::plan(future::sequential)
 # -------------------------------
-#saveRDS(index_df, file.path(out_dir, 'index_df.rds'))
-#index_df <- readRDS(file.path(out_dir, 'index_df.rds')) |> as_tibble()
+#saveRDS(index_df, file.path(out_dir, 'index-df.rds'))
+#index_df <- readRDS(file.path(out_dir, 'index-df.rds')) |> as_tibble()
 
 cross_combos <- bind_rows(
   tibble(Q = NA, sim_family = c('delta-lognormal', 'delta-gamma', 'tweedie')),
@@ -265,8 +265,8 @@ cross_combos <- bind_rows(
   tidyr::crossing(fit_family = c('lognormal', 'Gamma', 'tweedie', 'gengamma'))
 
 sanity_tally <- left_join(
-    cross_combos |> tidyr::unite(col = 'sim_combo_key', sim_family, Q, fit_family, sep = ":", remove = TRUE), 
-    index_df |> tidyr::unite(col = 'sim_combo_key', sim_family, Q, fit_family, sep = ":", remove = FALSE), 
+    cross_combos |> tidyr::unite(col = 'sim_combo_key', sim_family, Q, fit_family, sep = ":", remove = TRUE),
+    index_df |> tidyr::unite(col = 'sim_combo_key', sim_family, Q, fit_family, sep = ":", remove = FALSE),
     by = c('sim_combo_key'))
 
 plot_df <- index_df |>
@@ -298,8 +298,8 @@ plot_violin <- function(.data, .x, .ncol = NULL) {
     geom_violin(aes(col = fit_family), alpha = 0.5) +
     geom_vline(xintercept = 0, linetype = 'dashed') +
     scale_color_brewer(palette = "Dark2") +
-    facet_wrap(~ title, ncol = .ncol) + 
-    guides(colour = 'none') + 
+    facet_wrap(~ title, ncol = .ncol) +
+    guides(colour = 'none') +
 }
 
 plot_linedot <- function(.data, .x, .ncol = NULL) {
@@ -308,11 +308,11 @@ plot_linedot <- function(.data, .x, .ncol = NULL) {
   geom_point(size = 3) +
   geom_vline(xintercept = 0.95, linetype = 'dashed') +
   scale_color_brewer(palette = "Dark2") +
-  facet_wrap(~ title, ncol = .ncol) + 
+  facet_wrap(~ title, ncol = .ncol) +
   guides(colour = 'none')
 }
 
-plot_violin(plot_df, .x = RMSE, .ncol = 5) + 
+plot_violin(plot_df, .x = RMSE, .ncol = 5) +
   ggtitle('RMSE')
 ggsave(filename = file.path(fig_dir, 'rmse.png'), width = 11, height = 6.5)
 
@@ -321,18 +321,18 @@ plot_violin(plot_df, .x = MRE, .ncol = 5) +
   ggtitle('MRE')
 ggsave(filename = file.path(fig_dir, 'mre.png'), width = 11, height = 6.5)
 
-plot_violin(plot_df, .x = (d_aic + 1), .ncol = 5) + 
-  scale_x_continuous(trans = 'log10') + 
+plot_violin(plot_df, .x = (d_aic + 1), .ncol = 5) +
+  scale_x_continuous(trans = 'log10') +
   geom_vline(xintercept = 1, linetype = 'dashed') +
   ggtitle("Delta AIC")
 ggsave(filename = file.path(fig_dir, 'daic.png'), width = 11, height = 6.5)
 
 plot_df |>
   group_by(title, fit_family, Q, sim_family) |>
-  summarise(n_sanity_pass = n(), 
+  summarise(n_sanity_pass = n(),
             prop_covered = sum(covered) / n_sanity_pass
          ) |>
-plot_linedot(.x = prop_covered, .ncol = 5) + 
+plot_linedot(.x = prop_covered, .ncol = 5) +
   ggtitle("95% CI Coverage")
 ggsave(filename = file.path(fig_dir, 'ci-coverage.png'), width = 11, height = 6.5)
 

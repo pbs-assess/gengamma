@@ -140,11 +140,11 @@ get_phi <- function(cv, family, mu, p, Q) {
     cv <- sd(x)/mean(x)
     (cv - desired_cv)^2
   }
-  
-  switch(family, 
-    "gamma" = 1 / cv^2, 
+
+  switch(family,
+    "gamma" = 1 / cv^2,
     "lognormal" = log(1 + cv^2)^0.5, # simplification of `sdconv()`- independent of mu
-    "tweedie" = ((mu * cv)^2) / (mu^p), 
+    "tweedie" = ((mu * cv)^2) / (mu^p),
     "gengamma" = optimize(f, c(0.0001, 3), tol = 0.00001, desired_cv = cv, q = Q)$minimum
     )
 }
