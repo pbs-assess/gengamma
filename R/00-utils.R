@@ -58,6 +58,17 @@ get_phi <- function(cv, family, mu, p, Q) {
     )
 }
 
+choose_family <- function(fit_fam) {
+  switch(fit_fam,
+      "delta-gamma" = sdmTMB::delta_gamma(),
+      "delta-lognormal" = sdmTMB::delta_lognormal(),
+      "delta-gengamma" = sdmTMB::delta_gengamma(),
+      "tweedie" = sdmTMB::tweedie(link = "log"),
+      # Add more cases for other families if needed
+      stop("Invalid family name")
+  )
+}
+
 # Fit models across families
 fit_cross <- function(.data, .mesh, sim_fam, .Q = NA, fit_fam) {
   if (sim_fam == 'delta-gengamma') {
@@ -66,14 +77,7 @@ fit_cross <- function(.data, .mesh, sim_fam, .Q = NA, fit_fam) {
     dat <- .data |> filter(family == sim_fam, is.na(.Q))
   }
 
-  .family <- switch(fit_fam,
-      "delta-gamma" = sdmTMB::delta_gamma(),
-      "delta-lognormal" = sdmTMB::delta_lognormal(),
-      "delta-gengamma" = sdmTMB::delta_gengamma(),
-      "tweedie" = sdmTMB::tweedie(link = "log"),
-      # Add more cases for other families if needed
-      stop("Invalid family name")
-  )
+  .family <- choose_family(fit_fam)
 
   message("\tFitting data simulated from: ", sim_fam, " with - ", fit_fam)
   sdmTMB(formula = observed ~ 1,

@@ -8,10 +8,16 @@ source(here::here('R', '00-utils.R'))
 
 dir.create(here::here('data-outputs'), showWarnings = FALSE, recursive = TRUE)
 dir.create(here::here('data-outputs', 'errors'), showWarnings = FALSE, recursive = TRUE)
+dir.create(here::here('data-outputs', 'index'), showWarnings = FALSE, recursive = TRUE)
+dir.create(here::here('data-outputs', 'fit-summaries'), showWarnings = FALSE, recursive = TRUE)
+dir.create(here::here('data-outputs', 'fits'), showWarnings = FALSE, recursive = TRUE)
 dir.create(here::here('figures'), showWarnings = FALSE, recursive = TRUE)
 out_dir <- here::here('data-outputs')
 error_dir <- here::here('data-outputs', 'errors')
 fig_dir <- here::here('figures')
+fit_dir <- here::here('data-outputs', 'fits')
+fit_sum_dir <- here::here('data-outputs', 'fit-summaries')
+ind_dir <- here::here('data-outputs', 'index')
 
 # Steps:
 # 1. Simulate data from Lognormal, Gamma, Tweedie, and Gengamma
@@ -33,16 +39,22 @@ mesh_sim <- make_mesh(predictor_dat, xy_cols = c("X", "Y"), cutoff = 0.1)
 
 # Observation error scale parameter (e.g., SD in Gaussian).
 #cv_values <- c(0.2, 0.5, 0.8)
-cv <- c(0.8, 0.95)[2] # lingcod wcvi cv ~0.83; dogfish wcvi gamma cv ~0.95
+cv <- c(0.8, 0.95)[1] # lingcod wcvi cv ~0.83; dogfish wcvi gamma cv ~0.95
 b0 <- 0
-sigma_O <- c(0.6, 1.0, 1.75, 3.2)[2] #dogfish wcvi gamma ~1.0
+sigma_O <- c(0.2, 0.6, 1.0, 1.75, 3.2)[2] #dogfish wcvi gamma ~1.0
 tweedie_p <- 1.5
-tag <- paste0('-cv', cv, '-sigma_O', sigma_O)
 
 # Define the values of Q
 # .gamma_q <- get_phi(family = 'gengamma-gamma-case', cv = cv, mu = 1)
 # Q_values <- c(-5, -2, -1, -0.5, -0.001, 0.001, 0.5, round(.gamma_q, digits = 3), 1, 2, 5)
-Q_values <- c(-5, -2, -1, -0.5, -0.001, 0.001, 0.5, 0.8, 1, 2, 5) # Hard code .gamma_q for now
+
+if (!file.exists(file.path(out_dir, 'Q-values.txt'))) {
+  Q_values <- c(-5, -2, -1, -0.5, -0.001, 0.001, 0.5, 0.8, 1, 2, 5) # Hard code .gamma_q for now
+  dput(Q_values, file.path(out_dir, 'Q-values.txt'))
+} else {
+  Q_values <- dget(file.path(out_dir, 'Q-values.txt'))
+}
+
 if (!file.exists(file.path(out_dir, 'gengamma-phi.txt'))) {
   gengamma_phi <- map_dbl(Q_values, ~ get_phi(family = 'gengamma', cv = cv, mu = 1, Q = .x))
   dput(round(gengamma_phi, 5), file.path(out_dir, 'gengamma-phi.txt'))
@@ -50,7 +62,11 @@ if (!file.exists(file.path(out_dir, 'gengamma-phi.txt'))) {
   gengamma_phi <- dget(file.path(out_dir, 'gengamma-phi.txt'))
 }
 
-sim_fit <- function(rep = NA, get_simulation_output = FALSE) {
+sim_fit <- function(predictor_dat, mesh_sim,
+                   cv, b0, sigma_O, tweedie_p,
+                   Q_values, gengamma_phi,
+                   rep = NULL, get_simulation_output = FALSE,
+                   save_fits = FALSE) {
   # QUESTION: Does the seed need to be the same for the binom_sim component and the positive component?
   # Simulate from binomial
   binom_sim <- sdmTMB_simulate(
@@ -178,15 +194,20 @@ sim_fit <- function(rep = NA, get_simulation_output = FALSE) {
         error = function(e) {
           error_out <- sim_df |>
             mutate(fit_family = .fit_fam, rep = rep)
-          error_filename <- paste0(.fit_fam, '-', rep, '.rds')
+          error_filename <- paste0(.fit_fam, '-', rep, '-cv', cv, '-sigmao', sigma_O, '.rds')
           saveRDS(error_out, file.path(error_dir, error_filename))
         }
       )
     }
   )
   fits <- keep(fits, ~inherits(.x, "sdmTMB"))
-  # saveRDS(fits, file.path(fit_dir, 'fits.rds'))
-  # fits <- readRDS(file.path(fit_dir, 'fits.rds'))
+  fit_summary <- map_dfr(fits, get_fitted_estimates) |>
+    mutate(rep = rep)
+
+  if (save_fits) {
+    fits_filename <- paste0(rep, '-cv', cv, '-sigmao', sigma_O, '.rds')
+    saveRDS(fits, file.path(fit_dir, fits_filename))
+  }
 
   fit_sanity <- map_dfr(fits, \(x)
     tibble(
@@ -202,20 +223,33 @@ sim_fit <- function(rep = NA, get_simulation_output = FALSE) {
   pred_list <- fits[sanity_pass] |>
     map(predict, newdata = predictor_dat, return_tmb_object = TRUE)
 
-  index_df <- map_dfr(pred_list, get_index_summary)
+  index_df <- map_dfr(pred_list, get_index_summary) |>
+    mutate(rep = rep)
 
-  if (!is.na(rep)) {
-    index_df$rep = rep
-  }
+  index_df <- index_df |>
+    mutate(true = pull(true_index, 'biomass')) |>
+    as_tibble()
 
-  index_df |>
-    mutate(true = pull(true_index, 'biomass'))
+  list(index_df = index_df, fit_summary = fit_summary)
 }
 
 # Save one run of simulated data objects for benchmarking
 # set.seed(42)
-# sim_list <- sim_fit(1, get_simulation_output = TRUE)
+# sim_list <- sim_fit(rep = 1,
+  # predictor_dat = predictor_dat, mesh_sim = mesh_sim,
+  # cv = cv, b0 = b0, sigma_O = sigma_O, tweedie_p = tweedie_p,
+  # Q_values = Q_values, gengamma_phi = gengamma_phi,
+  # get_simulation_output = TRUE)
 # saveRDS(sim_list, file.path(out_dir, 'sim-list.rds'))
+
+# Save run of fits for residual checking
+set.seed(42)
+sim_list <- sim_fit(rep = 1,
+  predictor_dat = predictor_dat, mesh_sim = mesh_sim,
+  cv = cv, b0 = b0, sigma_O = sigma_O, tweedie_p = tweedie_p,
+  Q_values = Q_values, gengamma_phi = gengamma_phi,
+  save_fits = TRUE)
+
 
 # ------------------------------------------------------------------------------
 # Cross-simulation
@@ -223,15 +257,11 @@ sim_fit <- function(rep = NA, get_simulation_output = FALSE) {
 # Set up info for parallel runs of replicates
 is_rstudio <- !is.na(Sys.getenv("RSTUDIO", unset = NA))
 is_unix <- .Platform$OS.type == "unix"
-cores <- parallel::detectCores() - 2
-options(future.globals.maxSize = 800 * 1024 ^ 2) # 800 mb
-if (!is_rstudio && is_unix) {
-  future::plan(future::multicore, workers = cores)
-} else {
-  future::plan(future::multisession, workers = cores)
-}
+cores <- parallel::detectCores()
 
-n_reps <- 100
+# test <- sim_fit(predictor_dat = predictor_dat, mesh_sim = mesh_sim,
+#     cv = cv, b0 = b0, sigma_O = sigma_O, tweedie_p = tweedie_p,
+#     Q_values = Q_values, gengamma_phi = gengamma_phi)
 
 # Non progress-tracking version:
 # -------------------------------
@@ -242,26 +272,36 @@ n_reps <- 100
 # -------------------------------
 # Use version with progress bar
 # -------------------------------
+cv <- c(0.8, 0.95)[1] # lingcod wcvi cv ~0.83; dogfish wcvi gamma cv ~0.95
+b0 <- 0
+sigma_O <- c(0.2, 0.6, 1.0, 1.75)[4] #dogfish wcvi gamma ~1.0
+tweedie_p <- 1.5
+n_reps <- 50
+tag <- paste0('cv', cv, '-sigmao', sigma_O, '-nreps', n_reps)
+
 progressr::handlers(global = TRUE)
 progressr::handlers("progress")
 prog_fxn <- function(xs) {
   p <- progressr::progressor(along = xs)
-  furrr::future_map_dfr(xs, function(x) {
+  furrr::future_map(xs, function(x) {
     p(sprintf("x=%g", x))
-    sim_fit(rep = x)
+    sim_fit(rep = x,
+           predictor_dat = predictor_dat, mesh_sim = mesh_sim,
+           cv = cv, b0 = b0, sigma_O = sigma_O, tweedie_p = tweedie_p,
+           Q_values = Q_values, gengamma_phi = gengamma_phi)
   })
 }
+
 message("\tChecking for index file tag: \n\t   ", tag)
-if (!file.exists(file.path(out_dir, paste0('index-df', tag, '.rds')))) {
-  future::plan(future::multicore, workers = cores)
-  index_df <- prog_fxn(1:n_reps)
-  beep()
+if (!file.exists(file.path(ind_dir, paste0(tag, '.rds')))) {
+  options(future.globals.maxSize = 800 * 1024 ^ 2) # 800 mb
+  if (!is_rstudio && is_unix) {
+    future::plan(future::multicore, workers = cores)
+  } else {
+    future::plan(future::multisession, workers = cores)
+  }
+  out <- prog_fxn(1:n_reps)
   future::plan(future::sequential)
-  saveRDS(index_df, file.path(out_dir, paste0('index-df', tag, '.rds')))
-} else {
-  index_df <- readRDS(file.path(out_dir, paste0('index-df', tag, '.rds'))) |> as_tibble()
-}
-# -------------------------------
 
   index_df <- map_dfr(out, 'index_df')
   fit_summary <- map_dfr(out, 'fit_summary')
