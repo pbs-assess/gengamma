@@ -85,17 +85,55 @@ fit_cross <- function(.data, .mesh, sim_fam, .Q = NA, fit_fam) {
   )
 }
 
+get_fitted_estimates <- function(fit_obj) {
+  sd_rep_est <- as.list(fit_obj$sd_report, what = "Estimate")
+  sd_rep_se <- as.list(fit_obj$sd_report, what = "Std")
+
+  gg_Q <- sd_rep_est$gengamma_Q
+  gg_Q_se <- sd_rep_se$gengamma_Q
+
+  family1 <- family(fit_obj)[[1]][[1]]
+  family2 <- ifelse(family1 == 'tweedie', 'tweedie', family(fit_obj)[[2]][[1]])
+  mod <- ifelse(family1 == 'tweedie', 1, 2)
+
+  tidy_ran <- tidy(fit_obj, effects = 'ran_pars', model = mod) |>
+    tidyr::pivot_wider(names_from = term, values_from = c(estimate, std.error))
+
+  out <- tibble(
+    sim_family = unique(fit_obj$data$family),
+    fit_family = family2,
+    Q = unique(fit_obj$data$Q),
+    est_Q = gg_Q,
+    est_Qse = gg_Q_se,
+  )
+  bind_cols(out, tidy_ran)
+}
+
 get_index_summary <- function(predict_obj) {
+  fit_obj <- predict_obj$fit_obj
+  sd_rep_est <- as.list(predict_obj$fit_obj$sd_report, what = "Estimate")
+  sd_rep_se <- as.list(predict_obj$fit_obj$sd_report, what = "Std")
+
+  ran_pars <- tidy(predict_obj$fit_obj, 'ran_pars')
+
+  gg_Q <- sd_rep_est$gengamma_Q
+  gg_Q_se <- sd_rep_se$gengamma_Q
+
   index <- get_index(predict_obj, bias_correct = TRUE)
   mutate(index,
-    sim_family = unique(predict_obj$fit_obj$data$family),
-    sim_link = unique(predict_obj$fit_obj$data$link),
-    #fit_family1 = family(predict_obj$fit_obj)[[1]][[1]],
-    fit_family = ifelse(family(predict_obj$fit_obj)[[1]][[1]] == 'tweedie', 'tweedie', family(predict_obj$fit_obj)[[2]][[1]]),
-    phi = unique(predict_obj$fit_obj$data$phi),
-    Q = unique(predict_obj$fit_obj$data$Q),
-    sigma_O = unique(predict_obj$fit_obj$data$sigma_O),
-    aic = AIC(predict_obj$fit_obj)
+    sim_family = unique(fit_obj$data$family),
+    sim_link = unique(fit_obj$data$link),
+    #fit_family1 = family(fit_obj)[[1]][[1]],
+    fit_family = ifelse(family(fit_obj)[[1]][[1]] == 'tweedie', 'tweedie', family(fit_obj)[[2]][[1]]),
+    phi = unique(fit_obj$data$phi),
+    cv = unique(fit_obj$data$cv),
+    Q = unique(fit_obj$data$Q),
+    sigma_O = unique(fit_obj$data$sigma_O),
+    aic = AIC(fit_obj),
+    est_Q = gg_Q,
+    est_Qse = gg_Q_se,
+    est_sigmaO = gg_Q,
+    est_sigmaOse = gg_Q_se
   ) |>
   bind_rows()
 }
