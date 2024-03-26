@@ -263,98 +263,17 @@ if (!file.exists(file.path(out_dir, paste0('index-df', tag, '.rds')))) {
 }
 # -------------------------------
 
-cross_combos <- bind_rows(
-  tibble(Q = NA, sim_family = c('delta-lognormal', 'delta-gamma', 'tweedie')),
-  tidyr::crossing(Q = Q_values, sim_family = 'delta-gengamma')
-  ) |>
-  tidyr::crossing(fit_family = c('lognormal', 'Gamma', 'tweedie', 'gengamma'))
+  index_df <- map_dfr(out, 'index_df')
+  fit_summary <- map_dfr(out, 'fit_summary')
 
-sanity_tally <- left_join(
-    cross_combos |> tidyr::unite(col = 'sim_combo_key', sim_family, Q, fit_family, sep = ":", remove = TRUE),
-    index_df |> tidyr::unite(col = 'sim_combo_key', sim_family, Q, fit_family, sep = ":", remove = FALSE),
-    by = c('sim_combo_key'))
-
-plot_df <- index_df |>
-  group_by(rep, sim_family, fit_family, Q, `_sdmTMB_time`) |>
-  mutate(RMSE = sqrt(mean((log(est) - log(true))^2)),
-         MRE = mean((est - true) / true),
-         covered = lwr < true & upr > true,
-         ci_width = upr - lwr,
-         title = ifelse(is.na(Q), sim_family, paste0(sim_family, ": Q=", signif(Q, digits = 2)))
-  ) |>
-  ungroup(fit_family) |>
-  mutate(min_aic = min(aic),
-         d_aic = aic - min_aic) |>
-  ungroup()
-title_levels <- unique(plot_df$title)
-title_levels <- c(title_levels[-1], title_levels[1])
-plot_df <- plot_df |>
-  mutate(title = factor(title, levels = title_levels))
-
-
-# - Compare: RMSE, MRE, coverage, AIC
-# - look at the consequence of selecting the wrong family (what does AIC choose)
-# - examine bias in estimates and how the above relates to the Q value
-theme_set(theme_light(base_size = 12))
-
-plot_violin <- function(.data, .x, .ncol = NULL) {
-  ggplot(data = .data, aes(x = {{.x}}, y = fit_family)) +
-    stat_summary(fun = mean, geom = "point") +
-    geom_violin(aes(col = fit_family), alpha = 0.5) +
-    geom_vline(xintercept = 0, linetype = 'dashed') +
-    scale_color_brewer(palette = "Dark2") +
-    facet_wrap(~ title, ncol = .ncol) +
-    guides(colour = 'none')
+  saveRDS(index_df, file.path(ind_dir, paste0(tag, '.rds')))
+  saveRDS(fit_summary, file.path(fit_sum_dir, paste0(tag, '.rds')))
+} else {
+  index_df <- readRDS(file.path(ind_dir, paste0(tag, '.rds'))) |> as_tibble()
+  fit_summary <- readRDS(file.path(fit_sum_dir, paste0(tag, '.rds'))) |> as_tibble()
 }
-
-plot_linedot <- function(.data, .x, .ncol = NULL) {
-  ggplot(data = .data, aes(x = {{.x}}, y = fit_family, colour = fit_family)) +
-  geom_linerange(xmin = 0, mapping = aes(xmax = {{.x}})) +
-  geom_point(size = 3) +
-  geom_vline(xintercept = 0.95, linetype = 'dashed') +
-  scale_color_brewer(palette = "Dark2") +
-  facet_wrap(~ title, ncol = .ncol) +
-  guides(colour = 'none')
-}
-
-plot_violin(plot_df, .x = RMSE, .ncol = 5) +
-  ggtitle(paste0("RMSE", " CV = ", cv, "; Sigma_O = ", sigma_O))
-ggsave(filename = file.path(fig_dir, paste0('rmse', tag, '.png')), width = 11, height = 6.5)
-
-
-plot_violin(plot_df, .x = MRE, .ncol = 5) +
-  ggtitle(paste0("MRE", " CV = ", cv, "; Sigma_O = ", sigma_O))
-ggsave(filename = file.path(fig_dir, paste0('mre', tag, '.png')), width = 11, height = 6.5)
-
-plot_violin(plot_df, .x = (d_aic + 1), .ncol = 5) +
-  scale_x_continuous(trans = 'log10') +
-  geom_vline(xintercept = 1, linetype = 'dashed') +
-  ggtitle(paste0("Delta AIC", " CV = ", cv, "; Sigma_O = ", sigma_O))
-ggsave(filename = file.path(fig_dir, paste0('daic', tag, '.png')), width = 11, height = 6.5)
-
-plot_df |>
-  group_by(title, fit_family, Q, sim_family) |>
-  summarise(n_sanity_pass = n(),
-            prop_covered = sum(covered) / n_sanity_pass
-         ) |>
-plot_linedot(.x = prop_covered, .ncol = 5) +
-  ggtitle(paste0("95% CI Coverage", " CV = ", cv, "; Sigma_O = ", sigma_O))
-ggsave(filename = file.path(fig_dir, paste0('ci-coverage', tag, '.png')), width = 11, height = 6.5)
-
-plot_violin(plot_df, .x = ci_width, .ncol = 5) +
-  scale_x_continuous(trans = 'log10') +
-  ggtitle(paste0("95% CI Width", " CV = ", cv, "; Sigma_O = ", sigma_O))
-ggsave(filename = file.path(fig_dir, paste0('ci-width', tag, '.png')), width = 11, height = 6.5)
-
-sanity_tally |>
-  mutate(sanity_pass = ifelse(is.na(est), 0, 1)) |>
-  group_by(sim_family, Q, fit_family) |>
-  summarise(n_pass = sum(sanity_pass), pass_prop = n_pass / n_reps) |>
-  mutate(title = ifelse(is.na(Q), sim_family, paste0(sim_family, ": Q=", signif(Q, digits = 2)))) |>
-  mutate(title = factor(title, levels = title_levels)) |>
-plot_linedot(.x = pass_prop, .ncol = 5) +
-  ggtitle(paste0("Passed sanity check", " CV = ", cv, "; Sigma_O = ", sigma_O))
-ggsave(filename = file.path(fig_dir, paste0('sanity-pass', tag, '.png')), width = 11, height = 6.5)
+beep()
+# -------------------------------
 
 # Self check on gg Q estimation
 # ------------------------------------------------------------------------------
