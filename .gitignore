@@ -4,5 +4,6 @@
 *.code-workspace
 *.pptx
 *.pdf
+*.rds
 R/scratch
 figures/
