@@ -33,7 +33,7 @@ sim_fit <- function(predictor_dat, mesh_sim,
                    sp = "on", st = "off",
                    sample_size = 500,
                    rep = NULL, get_simulation_output = FALSE,
-                   save_fits = FALSE) {
+                   save_fits = FALSE, fits_only = FALSE) {
   # QUESTION: Does the seed need to be the same for the binom_sim component and the positive component?
   # Simulate from binomial
   binom_sim <- sdmTMB_simulate(
@@ -176,6 +176,9 @@ sim_fit <- function(predictor_dat, mesh_sim,
     fits_filename <- paste0(rep, '-cv', cv, '-sigmao', sigma_O, '-b', b0, '-n', sample_size, '.rds')
     message("\tSaving: ", file.path(fit_dir, fits_filename))
     saveRDS(fits, file.path(fit_dir, fits_filename))
+    if (fits_only) {
+      return(fits)
+    }
   }
 
   fit_summary <- map_dfr(fits, get_fitted_estimates) |>
@@ -259,11 +262,13 @@ if (!file.exists(file.path(out_dir, 'gengamma-phi.txt'))) {
 
 set.seed(60)
 fit <- sim_fit(rep = 60,
+set.seed(42)
+fit <- sim_fit(rep = 42,
   predictor_dat = predictor_dat, mesh_sim = mesh_sim,
-  cv = cv, b0 = 0, sigma_O = 0.8, tweedie_p = tweedie_p,
+  cv = cv, b0 = 0, sigma_O = 0, tweedie_p = tweedie_p,
   Q_values = Q_values, gengamma_phi = gengamma_phi,
-  sp = "on", sample_size = 500,
-  save_fits = TRUE)
+  sp = "off", sample_size = 1000,
+  save_fits = TRUE, fits_only = TRUE)
 beep()
 # ------------------------------------------------------------------------------
 # Cross-simulation
@@ -288,7 +293,7 @@ cores <- parallel::detectCores()
 # -------------------------------
 cv <- c(0.8, 0.95)[1] # lingcod wcvi cv ~0.83; dogfish wcvi gamma cv ~0.95
 b0 <- 0
-sigma_O <- c(0.2, 0.6, 1.0, 1.75)[4] #dogfish wcvi gamma ~1.0
+sigma_O <- c(0.2, 0.6, 1.0, 1.75)[2] #dogfish wcvi gamma ~1.0
 tweedie_p <- 1.5
 n_reps <- 50
 tag <- paste0('cv', cv, '-sigmao', sigma_O, '-nreps', n_reps)
