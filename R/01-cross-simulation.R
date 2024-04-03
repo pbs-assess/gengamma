@@ -251,17 +251,6 @@ if (!file.exists(file.path(out_dir, 'gengamma-phi.txt'))) {
   # get_simulation_output = TRUE)
 # saveRDS(sim_list, file.path(out_dir, 'sim-list.rds'))
 
-# Save run of fits for residual checking
-# set.seed(100)
-# sim_list <- sim_fit(rep = 1,
-#   predictor_dat = predictor_dat, mesh_sim = mesh_sim,
-#   cv = cv, b0 = 1, sigma_O = sigma_O, tweedie_p = tweedie_p,
-#   Q_values = Q_values, gengamma_phi = gengamma_phi,
-#   get_simulation_output = TRUE)
-# saveRDS(sim_list, file.path(out_dir, 'sim-list-seed-100_b0-1.rds'))
-
-set.seed(60)
-fit <- sim_fit(rep = 60,
 set.seed(42)
 fit <- sim_fit(rep = 42,
   predictor_dat = predictor_dat, mesh_sim = mesh_sim,
