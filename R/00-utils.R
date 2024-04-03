@@ -60,12 +60,12 @@ get_phi <- function(cv, family, mu, p, Q) {
 
 choose_family <- function(fit_fam) {
   switch(fit_fam,
-      "lognormal" = sdmTMB::lognormal(),
-      "gamma" = Gamma(),
-      "gengamma" = sdmTMB::gengamma(),
-      "delta-gamma" = sdmTMB::delta_gamma(),
-      "delta-lognormal" = sdmTMB::delta_lognormal(),
-      "delta-gengamma" = sdmTMB::delta_gengamma(),
+      "lognormal" = sdmTMB::lognormal(link = "log"),
+      "gamma" = Gamma(link = "log"),
+      "gengamma" = sdmTMB::gengamma(link = "log"),
+      "delta-gamma" = sdmTMB::delta_gamma(link2 = "log", type = "standard"),
+      "delta-lognormal" = sdmTMB::delta_lognormal(link2 = "log", type = "standard"),
+      "delta-gengamma" = sdmTMB::delta_gengamma(link2 = "log", type = "standard"),
       "tweedie" = sdmTMB::tweedie(link = "log"),
       # Add more cases for other families if needed
       stop("Invalid family name")
