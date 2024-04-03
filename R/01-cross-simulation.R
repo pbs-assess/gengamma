@@ -27,41 +27,6 @@ ind_dir <- here::here('data-outputs', 'index')
 
 # Simulate observed data from lognormal, gamma, gengamma
 # ------------------------------------------------------------------------------
-n_year = 1
-grid_width = 100
-set.seed = 42
-predictor_dat <- tidyr::expand_grid(
-    X = seq(0, 1, length.out = grid_width), Y = seq(0, 1, length.out = grid_width),
-    year = seq_len(n_year)
-  )
-
-mesh_sim <- make_mesh(predictor_dat, xy_cols = c("X", "Y"), cutoff = 0.1)
-
-# Observation error scale parameter (e.g., SD in Gaussian).
-#cv_values <- c(0.2, 0.5, 0.8)
-cv <- c(0.8, 0.95)[1] # lingcod wcvi cv ~0.83; dogfish wcvi gamma cv ~0.95
-b0 <- 0
-sigma_O <- c(0.2, 0.6, 1.0, 1.75, 3.2)[2] #dogfish wcvi gamma ~1.0
-tweedie_p <- 1.5
-
-# Define the values of Q
-# .gamma_q <- get_phi(family = 'gengamma-gamma-case', cv = cv, mu = 1)
-# Q_values <- c(-5, -2, -1, -0.5, -0.001, 0.001, 0.5, round(.gamma_q, digits = 3), 1, 2, 5)
-
-if (!file.exists(file.path(out_dir, 'Q-values.txt'))) {
-  Q_values <- c(-5, -2, -1, -0.5, -0.001, 0.001, 0.5, 0.8, 1, 2, 5) # Hard code .gamma_q for now
-  dput(Q_values, file.path(out_dir, 'Q-values.txt'))
-} else {
-  Q_values <- dget(file.path(out_dir, 'Q-values.txt'))
-}
-
-if (!file.exists(file.path(out_dir, 'gengamma-phi.txt'))) {
-  gengamma_phi <- map_dbl(Q_values, ~ get_phi(family = 'gengamma', cv = cv, mu = 1, Q = .x))
-  dput(round(gengamma_phi, 5), file.path(out_dir, 'gengamma-phi.txt'))
-} else {
-  gengamma_phi <- dget(file.path(out_dir, 'gengamma-phi.txt'))
-}
-
 sim_fit <- function(predictor_dat, mesh_sim,
                    cv, b0, sigma_O, tweedie_p,
                    Q_values, gengamma_phi,
@@ -92,7 +57,7 @@ sim_fit <- function(predictor_dat, mesh_sim,
       data = predictor_dat,
       time = "year",
       mesh = mesh_sim,
-      family = lognormal(link = 'log'), # Delta families are not supported. Instead, simulate the two component models separately and combine.
+      family = Gamma(link = 'log'), # Delta families are not supported. Instead, simulate the two component models separately and combine.
       range = 0.5, # Parameter that controls the decay of spatial correlation. If length 2, the spatial and spatiotemporal ranges will be unique.
       phi = get_phi(family = 'lognormal', cv = cv), # Observation error scale parameter (e.g., SD in Gaussian).
       sigma_E = 0, # #sigma_E = 0.1,; SD of spatiotemporal process (Epsilon).
@@ -101,7 +66,7 @@ sim_fit <- function(predictor_dat, mesh_sim,
       B = c(b0) # B0 = intercept, B1 = a1 slope;  A vector of beta values (fixed-effect coefficient values).
       #B = c(0.2, -0.4) # B0 = intercept, B1 = a1 slope
     ) |>
-    mutate(family = 'lognormal', link = 'log', cv = cv,
+    mutate(family = 'gamma', link = 'log', cv = cv,
            sigma_O = sigma_O, b0 = b0, Q = NA) |>
     tibble::as_tibble() |>
     mutate(encounter_mu = binom_sim$mu,
@@ -209,6 +174,7 @@ sim_fit <- function(predictor_dat, mesh_sim,
 
   if (save_fits) {
     fits_filename <- paste0(rep, '-cv', cv, '-sigmao', sigma_O, '-b', b0, '-n', sample_size, '.rds')
+    message("\tSaving: ", file.path(fit_dir, fits_filename))
     saveRDS(fits, file.path(fit_dir, fits_filename))
   }
 
@@ -239,6 +205,40 @@ sim_fit <- function(predictor_dat, mesh_sim,
   list(index_df = index_df, fit_summary = fit_summary)
 }
 
+n_year = 1
+grid_width = 100
+set.seed = 42
+predictor_dat <- tidyr::expand_grid(
+    X = seq(0, 1, length.out = grid_width), Y = seq(0, 1, length.out = grid_width),
+    year = seq_len(n_year)
+  )
+
+mesh_sim <- make_mesh(predictor_dat, xy_cols = c("X", "Y"), cutoff = 0.1)
+
+# Observation error scale parameter (e.g., SD in Gaussian).
+#cv_values <- c(0.2, 0.5, 0.8)
+cv <- c(0.8, 0.95)[1] # lingcod wcvi cv ~0.83; dogfish wcvi gamma cv ~0.95
+b0 <- 0
+sigma_O <- c(0.2, 0.6, 1.0, 1.75, 3.2)[2] #dogfish wcvi gamma ~1.0
+tweedie_p <- 1.5
+
+# Define the values of Q
+# .gamma_q <- get_phi(family = 'gengamma-gamma-case', cv = cv, mu = 1)
+# Q_values <- c(-5, -2, -1, -0.5, -0.001, 0.001, 0.5, round(.gamma_q, digits = 3), 1, 2, 5)
+
+if (!file.exists(file.path(out_dir, 'Q-values.txt'))) {
+  Q_values <- c(-5, -2, -1, -0.5, -0.001, 0.001, 0.5, 0.8, 1, 2, 5) # Hard code .gamma_q for now
+  dput(Q_values, file.path(out_dir, 'Q-values.txt'))
+} else {
+  Q_values <- dget(file.path(out_dir, 'Q-values.txt'))
+}
+
+if (!file.exists(file.path(out_dir, 'gengamma-phi.txt'))) {
+  gengamma_phi <- map_dbl(Q_values, ~ get_phi(family = 'gengamma', cv = cv, mu = 1, Q = .x))
+  dput(round(gengamma_phi, 5), file.path(out_dir, 'gengamma-phi.txt'))
+} else {
+  gengamma_phi <- dget(file.path(out_dir, 'gengamma-phi.txt'))
+}
 # Save one run of simulated data objects for benchmarking
 # set.seed(42)
 # sim_list <- sim_fit(rep = 1,
@@ -257,12 +257,12 @@ sim_fit <- function(predictor_dat, mesh_sim,
 #   get_simulation_output = TRUE)
 # saveRDS(sim_list, file.path(out_dir, 'sim-list-seed-100_b0-1.rds'))
 
-set.seed(37)
-fit <- sim_fit(rep = 37,
+set.seed(60)
+fit <- sim_fit(rep = 60,
   predictor_dat = predictor_dat, mesh_sim = mesh_sim,
-  cv = cv, b0 = 1, sigma_O = 0.8, tweedie_p = tweedie_p,
+  cv = cv, b0 = 0, sigma_O = 0.8, tweedie_p = tweedie_p,
   Q_values = Q_values, gengamma_phi = gengamma_phi,
-  sp = "on", sample_size = 7000,
+  sp = "on", sample_size = 500,
   save_fits = TRUE)
 beep()
 # ------------------------------------------------------------------------------
