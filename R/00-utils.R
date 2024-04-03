@@ -60,6 +60,9 @@ get_phi <- function(cv, family, mu, p, Q) {
 
 choose_family <- function(fit_fam) {
   switch(fit_fam,
+      "lognormal" = sdmTMB::lognormal(),
+      "gamma" = Gamma(),
+      "gengamma" = sdmTMB::gengamma(),
       "delta-gamma" = sdmTMB::delta_gamma(),
       "delta-lognormal" = sdmTMB::delta_lognormal(),
       "delta-gengamma" = sdmTMB::delta_gengamma(),
@@ -70,9 +73,10 @@ choose_family <- function(fit_fam) {
 }
 
 # Fit models across families
-fit_cross <- function(.data, .mesh, sim_fam, .Q = NA, fit_fam) {
-  if (sim_fam == 'delta-gengamma') {
-    dat <- .data |> filter(family == 'delta-gengamma', Q == .Q)
+fit_cross <- function(.data, .mesh, sim_fam, .Q = NA, fit_fam,
+  sp = "on", st = "off") {
+  if (grepl("gengamma", sim_fam)) {
+    dat <- .data |> filter(grepl("gengamma", family), Q == .Q)
   } else {
     dat <- .data |> filter(family == sim_fam, is.na(.Q))
   }
@@ -84,9 +88,18 @@ fit_cross <- function(.data, .mesh, sim_fam, .Q = NA, fit_fam) {
     data = dat,
     mesh = .mesh,
     family = .family,
-    spatial = "on",
-    spatiotemporal = 'off'
+    spatial = sp,
+    spatiotemporal = st
   )
+}
+
+get_sanity_df <- function(fit_obj, silent = FALSE) {
+  tibble(
+    sim_family = unique(fit_obj$data$family),
+    fit_family = ifelse(family(fit_obj)[[1]][[1]] == 'tweedie', 'tweedie', family(fit_obj)[[2]][[1]]),
+    Q = unique(fit_obj$data$Q),
+    sanity_allok = sanity(fit_obj, silent = silent)$all_ok
+    )
 }
 
 get_fitted_estimates <- function(fit_obj) {

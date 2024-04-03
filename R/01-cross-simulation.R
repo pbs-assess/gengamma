@@ -65,6 +65,8 @@ if (!file.exists(file.path(out_dir, 'gengamma-phi.txt'))) {
 sim_fit <- function(predictor_dat, mesh_sim,
                    cv, b0, sigma_O, tweedie_p,
                    Q_values, gengamma_phi,
+                   sp = "on", st = "off",
+                   sample_size = 500,
                    rep = NULL, get_simulation_output = FALSE,
                    save_fits = FALSE) {
   # QUESTION: Does the seed need to be the same for the binom_sim component and the positive component?
@@ -110,7 +112,7 @@ sim_fit <- function(predictor_dat, mesh_sim,
     group_by(year) |>
     summarise(biomass = sum(encounter_mu * mu))
 
-  sampled <- sample_n(sim_dat, size = 500)
+  sampled <- sample_n(sim_dat, size = sample_size)
   # QUESTION: How many samples should be drawn?
   # I was looking at coverage from the real surveys which is ~5% of the survey grid / year (I think??)
   # But I think there are convergence issues with 4000 / 10000 as done here.
@@ -189,7 +191,9 @@ sim_fit <- function(predictor_dat, mesh_sim,
           .mesh = sampled_mesh,
           sim_fam = .sim_fam,
           fit_fam = .fit_fam,
-          .Q = .Q)
+          .Q = .Q,
+          sp = sp,
+          st = st)
         },
         error = function(e) {
           error_out <- sim_df |>
@@ -200,14 +204,16 @@ sim_fit <- function(predictor_dat, mesh_sim,
       )
     }
   )
+
   fits <- keep(fits, ~inherits(.x, "sdmTMB"))
-  fit_summary <- map_dfr(fits, get_fitted_estimates) |>
-    mutate(rep = rep)
 
   if (save_fits) {
-    fits_filename <- paste0(rep, '-cv', cv, '-sigmao', sigma_O, '.rds')
+    fits_filename <- paste0(rep, '-cv', cv, '-sigmao', sigma_O, '-b', b0, '-n', sample_size, '.rds')
     saveRDS(fits, file.path(fit_dir, fits_filename))
   }
+
+  fit_summary <- map_dfr(fits, get_fitted_estimates) |>
+    mutate(rep = rep)
 
   fit_sanity <- map_dfr(fits, \(x)
     tibble(
@@ -243,14 +249,22 @@ sim_fit <- function(predictor_dat, mesh_sim,
 # saveRDS(sim_list, file.path(out_dir, 'sim-list.rds'))
 
 # Save run of fits for residual checking
-set.seed(42)
-sim_list <- sim_fit(rep = 1,
+# set.seed(100)
+# sim_list <- sim_fit(rep = 1,
+#   predictor_dat = predictor_dat, mesh_sim = mesh_sim,
+#   cv = cv, b0 = 1, sigma_O = sigma_O, tweedie_p = tweedie_p,
+#   Q_values = Q_values, gengamma_phi = gengamma_phi,
+#   get_simulation_output = TRUE)
+# saveRDS(sim_list, file.path(out_dir, 'sim-list-seed-100_b0-1.rds'))
+
+set.seed(37)
+fit <- sim_fit(rep = 37,
   predictor_dat = predictor_dat, mesh_sim = mesh_sim,
-  cv = cv, b0 = b0, sigma_O = sigma_O, tweedie_p = tweedie_p,
+  cv = cv, b0 = 1, sigma_O = 0.8, tweedie_p = tweedie_p,
   Q_values = Q_values, gengamma_phi = gengamma_phi,
+  sp = "on", sample_size = 7000,
   save_fits = TRUE)
-
-
+beep()
 # ------------------------------------------------------------------------------
 # Cross-simulation
 # ------------------------------------------------------------------------------
