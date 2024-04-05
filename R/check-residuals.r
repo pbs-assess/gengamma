@@ -68,14 +68,6 @@ dr_df <- purrr::map_dfr(fit_df$id[fit_df$sanity_allok], ~ get_dr(fits[[.x]], .x,
   tibble::as_tibble()
 beep()
 
-# dr_df_mleeb <- purrr::map_dfr(fit_df$id[fit_df$sanity_allok], ~ get_dr(fits[[.x]], .x, seed = 100, nsim = 200, type = 'mle-eb')) |>
-#   tibble::as_tibble()
-# beep()
-
-# left_join(dr_df_mleeb, fit_df) |>
-#   mutate(title = factor(title, levels = title_levels)) |>
-#   plot_resid()
-
 left_join(dr_df, fit_df) |>
   mutate(title = factor(title, levels = title_levels)) |>
   plot_resid()
@@ -83,3 +75,11 @@ left_join(dr_df, fit_df) |>
 left_join(dr_df, fit_df) |>
   filter(title == 'delta-gengamma: Q=0.8') |>
 plot_resid()
+
+# dr_df_mleeb <- purrr::map_dfr(fit_df$id[fit_df$sanity_allok], ~ get_dr(fits[[.x]], .x, seed = 100, nsim = 200, type = 'mle-eb')) |>
+#   tibble::as_tibble()
+# beep()
+
+# left_join(dr_df_mleeb, fit_df) |>
+#   mutate(title = factor(title, levels = title_levels)) |>
+#   plot_resid()
