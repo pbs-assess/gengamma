@@ -93,13 +93,22 @@ fit_cross <- function(.data, .mesh, sim_fam, .Q = NA, fit_fam,
   )
 }
 
-get_sanity_df <- function(fit_obj, silent = FALSE) {
-  tibble(
+get_sanity_df <- function(fit_obj, real_data = FALSE, silent = FALSE) {
+  if (!real_data) {
+  out <- tibble(
     sim_family = unique(fit_obj$data$family),
     fit_family = ifelse(family(fit_obj)[[1]][[1]] == 'tweedie', 'tweedie', family(fit_obj)[[2]][[1]]),
     Q = unique(fit_obj$data$Q),
     sanity_allok = sanity(fit_obj, silent = silent)$all_ok
     )
+  } else {
+    out <- tibble(
+      species = unique(fit_obj$data$species),
+      region = unique(fit_obj$data$survey_abbrev),
+      fit_family = ifelse(family(fit_obj)[[1]][[1]] == 'tweedie', 'tweedie', family(fit_obj)[[2]][[1]]),
+      ) |>
+      bind_cols(tibble::tibble(!!!sanity(fit_obj, silent = silent)))
+  }
 }
 
 get_fitted_estimates <- function(fit_obj) {
@@ -155,6 +164,18 @@ get_index_summary <- function(predict_obj) {
   bind_rows()
 }
 
+clean_name <- function(x) gsub("/", "-", gsub(" ", "-", x))
+
 beep <- function() {
   if (Sys.info()[["user"]] == "jilliandunic") beepr::beep()
+}
+
+choose_multi_type <- function(cores = cores) {
+  is_rstudio <- !is.na(Sys.getenv("RSTUDIO", unset = NA))
+  is_unix <- .Platform$OS.type == "unix"
+  if (!is_rstudio && is_unix) {
+    future::plan(future::multicore, workers = cores)
+  } else {
+    future::plan(future::multisession, workers = cores)
+  }
 }
