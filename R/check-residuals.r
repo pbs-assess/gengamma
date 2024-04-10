@@ -6,27 +6,7 @@ theme_set(theme_light())
 
 source(here::here('R', '00-utils.R'))
 
-get_rqr <- function(fit_obj, id) {
-  m <- if (family(fit_obj)[[1]][1] == 'tweedie') 1 else 2
-  tibble(r = residuals(fit_obj, type = 'mle-mvn', model = m), id = id)
-}
-
-get_dr <- function(fit_obj, fit_id, nsim = 200, seed = sample.int(1e6, 1), type = 'mle-mvn') {
-  set.seed(seed)
-  simulate(fit_obj, nsim = nsim, type = type) |>
-  dharma_residuals(fit_obj, plot = FALSE) |>
-  mutate(id = fit_id, seed = seed)
-}
-
-plot_resid <- function(resids) {
-  ggplot(resids, aes(x = expected, y = observed)) +
-    geom_point(shape = 21) +
-    geom_abline(intercept = 0, slope = 1) +
-    facet_grid(fit_family ~ title) +
-    guides(colour = "none")
-}
 # ------------
-
 fits <- readRDS(here::here('data-outputs', 'fits', '42-cv0.8-sigmao0-b0-n1000.rds'))
 
 sanity_df <- purrr::map_dfr(fits, ~get_sanity_df(.x, silent = TRUE))

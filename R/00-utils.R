@@ -111,7 +111,7 @@ get_sanity_df <- function(fit_obj, real_data = FALSE, silent = FALSE) {
   }
 }
 
-get_fitted_estimates <- function(fit_obj) {
+get_fitted_estimates <- function(fit_obj, real_data = FALSE) {
   sd_rep_est <- as.list(fit_obj$sd_report, what = "Estimate")
   sd_rep_se <- as.list(fit_obj$sd_report, what = "Std")
 
@@ -125,13 +125,24 @@ get_fitted_estimates <- function(fit_obj) {
   tidy_ran <- tidy(fit_obj, effects = 'ran_pars', model = mod) |>
     tidyr::pivot_wider(names_from = term, values_from = c(estimate, std.error))
 
-  out <- tibble(
-    sim_family = unique(fit_obj$data$family),
-    fit_family = family2,
-    Q = unique(fit_obj$data$Q),
-    est_Q = gg_Q,
-    est_Qse = gg_Q_se,
-  )
+  if (!real_data) {
+    out <- tibble(
+      sim_family = unique(fit_obj$data$family),
+      fit_family = family2,
+      Q = unique(fit_obj$data$Q),
+      est_Q = gg_Q,
+      est_Qse = gg_Q_se
+    )
+  } else {
+    out <- tibble(
+      fit_family = family2,
+      est_Q = gg_Q,
+      est_Qse = gg_Q_se,
+      spatial = unique(fit_obj$spatial),
+      spatiotemporal = unique(fit_obj$spatiotemporal),
+      aic = AIC(fit_obj)
+    )
+  }
   bind_cols(out, tidy_ran)
 }
 
@@ -140,7 +151,9 @@ get_index_summary <- function(predict_obj) {
   sd_rep_est <- as.list(predict_obj$fit_obj$sd_report, what = "Estimate")
   sd_rep_se <- as.list(predict_obj$fit_obj$sd_report, what = "Std")
 
-  ran_pars <- tidy(predict_obj$fit_obj, 'ran_pars')
+  # ran_pars <- tidy(predict_obj$fit_obj, 'ran_pars')
+  # est_sigmaO <- ran_pars$estimate[ran_pars$term == 'sigma_O']
+  # est_sigmaOse <- ran_pars$std.error[ran_pars$term == 'sigma_O']
 
   gg_Q <- sd_rep_est$gengamma_Q
   gg_Q_se <- sd_rep_se$gengamma_Q
@@ -157,9 +170,9 @@ get_index_summary <- function(predict_obj) {
     sigma_O = unique(fit_obj$data$sigma_O),
     aic = AIC(fit_obj),
     est_Q = gg_Q,
-    est_Qse = gg_Q_se,
-    est_sigmaO = gg_Q,
-    est_sigmaOse = gg_Q_se
+    est_Qse = gg_Q_se#,
+    # est_sigmaO = est_sigmaO,
+    # est_sigmaOse = est_sigmaOse
   ) |>
   bind_rows()
 }
@@ -178,4 +191,28 @@ choose_multi_type <- function(cores = cores) {
   } else {
     future::plan(future::multisession, workers = cores)
   }
+}
+
+# ---------------
+# Residuals
+# ---------------
+get_rqr <- function(fit_obj, id) {
+  m <- if (family(fit_obj)[[1]][1] == 'tweedie') 1 else 2
+  tibble(r = residuals(fit_obj, type = 'mle-mvn', model = m), id = id)
+  gc()
+}
+
+get_dr <- function(fit_obj, fit_id, nsim = 200, seed = sample.int(1e6, 1), type = 'mle-mvn') {
+  set.seed(seed)
+  simulate(fit_obj, nsim = nsim, type = type) |>
+  dharma_residuals(fit_obj, plot = FALSE) |>
+  mutate(id = fit_id, seed = seed)
+}
+
+plot_resid <- function(resids) {
+  ggplot(resids, aes(x = expected, y = observed)) +
+    geom_point(shape = 21) +
+    geom_abline(intercept = 0, slope = 1) +
+    facet_grid(fit_family ~ title) +
+    guides(colour = "none")
 }
