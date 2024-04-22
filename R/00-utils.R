@@ -72,6 +72,46 @@ choose_family <- function(fit_fam) {
   )
 }
 
+# Fit real data:aic
+get_fit <- function(survey_dat, formula, region, family, species = NULL, cutoff = 8, time = "year",
+                   sp = "on", st = "iid", offset = "offset") {
+  survey_dat <- filter(survey_dat, survey_abbrev %in% region)
+
+  if (is.null(species)) {
+    species <- unique(survey_dat$species)
+  } else {
+    survey_dat <- filter(survey_dat, species == {{species}})
+  }
+  mesh <- make_mesh(survey_dat, xy_cols = c("X", "Y"), cutoff = cutoff)
+  fit <- tryCatch(
+    sdmTMB(
+      formula = formula,
+      data = survey_dat,
+      mesh = mesh,
+      time = "year",
+      spatial = sp,
+      spatiotemporal = st,
+      offset = "offset",
+      family = choose_family(family)
+    ),
+    error = function(e) paste(species, region, family, "\n\tError:", e, sep = " - ")
+  )
+
+  if (inherits(fit, 'sdmTMB')) {
+    sanity_check <- all(unlist(sdmTMB::sanity(fit, gradient_thresh = 0.005)))
+  }
+  # Turn off spatial field if model does not fit and spatiotemporal == "off"
+  if ((!inherits(fit, 'sdmTMB') | !sanity_check) & (sp == "on" & st == "off")) {
+    message("\tFitting: sp = ", sp, ", st = ", st, " for ", species, "-", region, "-", family, " failed")
+    message("\tUpdating with sp = off")
+    fit <- tryCatch(
+      update(fit, spatial = "off"),
+      error = function(e) paste(species, region, family, "\n\tError:", e, sep = " - ")
+    )
+  }
+  fit
+}
+
 # Fit models across families
 fit_cross <- function(.data, .mesh, sim_fam, .Q = NA, fit_fam,
   sp = "on", st = "off") {
@@ -93,21 +133,23 @@ fit_cross <- function(.data, .mesh, sim_fam, .Q = NA, fit_fam,
   )
 }
 
-get_sanity_df <- function(fit_obj, real_data = FALSE, silent = FALSE) {
+get_sanity_df <- function(fit_obj, real_data = FALSE, silent = FALSE, .gradient_thresh = 0.001) {
   if (!real_data) {
   out <- tibble(
     sim_family = unique(fit_obj$data$family),
     fit_family = ifelse(family(fit_obj)[[1]][[1]] == 'tweedie', 'tweedie', family(fit_obj)[[2]][[1]]),
     Q = unique(fit_obj$data$Q),
-    sanity_allok = sanity(fit_obj, silent = silent)$all_ok
+    sanity_allok = sanity(fit_obj, silent = silent, gradient_thresh = .gradient_thresh)$all_ok,
+    gradient_thresh = .gradient_thresh
     )
   } else {
     out <- tibble(
       species = unique(fit_obj$data$species),
       region = unique(fit_obj$data$survey_abbrev),
       fit_family = ifelse(family(fit_obj)[[1]][[1]] == 'tweedie', 'tweedie', family(fit_obj)[[2]][[1]]),
+      gradient_thresh = .gradient_thresh
       ) |>
-      bind_cols(tibble::tibble(!!!sanity(fit_obj, silent = silent)))
+      bind_cols(tibble::tibble(!!!sanity(fit_obj, silent = silent, gradient_thresh = .gradient_thresh)))
   }
 }
 
@@ -199,7 +241,6 @@ choose_multi_type <- function(cores = cores) {
 get_rqr <- function(fit_obj, id) {
   m <- if (family(fit_obj)[[1]][1] == 'tweedie') 1 else 2
   tibble(r = residuals(fit_obj, type = 'mle-mvn', model = m), id = id)
-  gc()
 }
 
 get_dr <- function(fit_obj, fit_id, nsim = 200, seed = sample.int(1e6, 1), type = 'mle-mvn') {
