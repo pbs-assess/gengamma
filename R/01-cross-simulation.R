@@ -254,7 +254,7 @@ if (!file.exists(file.path(out_dir, 'gengamma-phi.txt'))) {
 set.seed(42)
 fit <- sim_fit(rep = 42,
   predictor_dat = predictor_dat, mesh_sim = mesh_sim,
-  cv = cv, b0 = 0, sigma_O = 0, tweedie_p = tweedie_p,
+  cv = 0.95, b0 = 0, sigma_O = 1, tweedie_p = tweedie_p,
   Q_values = Q_values, gengamma_phi = gengamma_phi,
   sp = "off", sample_size = 1000,
   save_fits = TRUE, fits_only = TRUE)

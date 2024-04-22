@@ -68,17 +68,29 @@ tofit <- tidyr::expand_grid(.region = regions, .family = families,
   mutate(.id = row_number())
 
 #species <- spp_list[[4]]
-species <- 'yellowtail rockfish'
+#species <- 'north pacific spiny dogfish'
+#scaler <- 1e-2 # works
+#region <- 'SYN WCVI'
+
+# species <- 'walleye pollock'
+# region <- 'SYN WCVI'
+# scaler <- 1e-3 # QCS needs 1e-1; nothing seems to fix SYN WCVI
+
 sp_file <- paste0(clean_name(species), ".rds")
 cutoff <- 8
 save_fits <- TRUE
 
-fits <-
+filter(dat, species == 'walleye pollock', survey_abbrev == "SYN WCVI") |>
+  pull(catch_weight) |>
+  hist()
+
+test_fit <-
   tofit |>
     filter(.species == species) |>
-    filter(.region == 'SYN WCHG') |>
+    filter(.region == region) |>
+    filter(.family == 'delta-gengamma') |>
     purrr::pmap(\(.region, .family, .id, .species) {
-        get_fit(survey_dat = dat,
+        get_fit(survey_dat = dat |> mutate(catch_weight = catch_weight * scaler),
             formula = as.formula(catch_weight ~ 0 + as.factor(year)),
             offset = "offset",
             region = .region, family = .family, species = .species,
@@ -161,15 +173,13 @@ progressr::with_progress({
 # ------------------------------------------------------------------------------
 f_name <- list.files(fit_dir)
 f <- file.path(fit_dir, f_name)
-# Just arrowtooth for testing code
-fa <- lapply(f[grepl("arrowtooth-flounder", f)], readRDS)
 
 fits <-lapply(f, readRDS) |>
   setNames(stringr::str_extract(f_name, ("(.*)\\.rds"), group = 1))
 
 if (!file.exists(file.path(out_dir, "sanity-df.rds"))) {
 sanity_df <- purrr::keep(fits, ~inherits(.x, "sdmTMB")) |>
-  purrr::map_dfr(get_sanity_df, real_data = TRUE, silent = TRUE) |>
+  purrr::map_dfr(get_sanity_df, real_data = TRUE, silent = TRUE, .gradient_thresh = 0.005) |>
   left_join(lu_df, by = c("species" = ".species", "region" = ".region", "fit_family"))
 saveRDS(sanity_df, file.path(out_dir, "sanity-df.rds"))
 } else {message("\t Loading cached sanity-df")
@@ -181,8 +191,17 @@ ok_sanity <- sanity_df |> filter(all_ok == TRUE)
 # Only predict and get index for fits that passed a sanity check
 ok_fits <- fits[ok_sanity$fname]
 
+no_wchg <- ok_fits[!grepl('WCHG', names(ok_fits))]
+
 predictions <- purrr::map(ok_fits, \(x) {
-  predict(x, newdata = x$data, return_tmb_object = TRUE)
+  region <- unique(x$data$survey_abbrev)
+  years <- unique(x$data$year)
+  sg <- syn_grid |> filter(survey %in% region)
+  nd <- sdmTMB::replicate_df(
+      dat = sg,
+      time_name = "year",
+      time_values = years)
+  predict(x, newdata = nd, return_tmb_object = TRUE)
 })
 
 inds <- purrr::map(predictions, get_index, bias_correct = TRUE) |>
@@ -200,6 +219,19 @@ fit_ests <- purrr::map(ok_fits, get_fitted_estimates, real_data = TRUE) |>
 beep()
 saveRDS(fit_ests, file.path(out_dir, "fitted-estimates-df.rds"))
 
+gg_fits <- fits[grepl('gengamma', names(fits))] |>
+  purrr::keep(~ inherits(.x, 'sdmTMB'))
+gg_fit_ests <- gg_fits|>
+  purrr::map(get_fitted_estimates, real_data = TRUE) |>
+  purrr::map2(.x = _, .y = names(gg_fits), ~ mutate(.x, fname = .y)) |>
+  bind_rows() |>
+  left_join(lu_df) |>
+  select(-fname)
+beep()
+saveRDS(gg_fit_ests, file.path(out_dir, "gengamma-all-fitted-estimates-df.rds"))
+
+gg_fit_ests
+
 rqr_residuals1 <- purrr::map2_dfr(ok_fits[1:30], names(ok_fits[1:30]), ~get_rqr(.x, id = .y))
 rqr_residuals2 <- purrr::map2_dfr(ok_fits[31:100], names(ok_fits[31:100]), ~get_rqr(.x, id = .y))
 
@@ -215,6 +247,42 @@ rqr_residuals <- bind_rows(rqr_residuals1, rqr_residuals2, rqr_residuals3)
 
 test <- residuals(ok_fits[[5]], type = 'mle-mvn', model = 2)
 str(test)
+
+# Examine single species
+sp_f <- f[grepl("north-pacific-spiny-dogfish", f)]
+fa <- lapply(sp_f, readRDS) |>
+  setNames(stringr::str_extract(sp_f, (".*fits/(.*)\\.rds"), group = 1))
+sp_fits <- purrr::keep(fa, ~inherits(.x, "sdmTMB"))
+test <- sp_fits |>
+  purrr::map_dfr(get_sanity_df, real_data = TRUE, .gradient_thresh = 0.005)
+
+g <- sp_fits |> purrr::map(~ .x$gradients)
+
+
+sp_fits[["north-pacific-spiny-dogfish-SYN WCVI-delta-gengamma"]] |> names()
+sanity()
+
+rqr_df <- purrr::map_dfr(1:length(sp_fits), ~ get_rqr(sp_fits[[.x]], id = names(sp_fits[.x])))
+
+rqr_df |>
+  mutate(region = stringr::str_extract_all(id, "(.*)-(SYN [A-Z]{2,4})-(.*)"))
+
+rqr_df  |>
+   mutate(species = stringr::str_extract(id, ".*(?=-SYN)"),
+          region = stringr::str_extract(id, ".*-(SYN [A-Z]{2,4})-.*", group = 1),
+          family = stringr::str_extract(id, ".*-SYN [A-Z]{2,4}-(.*)", group = 1)) |>
+ggplot(aes(sample = r)) +
+  geom_qq() +
+  geom_abline(intercept = 0, slope = 1) +
+  facet_grid(region ~ family)
+  #facet_wrap(~ family)
+
+
+
+# Splitting the capture groups into separate columns
+
+
+
 
 # RQR
 # ------------------

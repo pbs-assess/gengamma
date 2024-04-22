@@ -13,7 +13,7 @@ tw_sim <- filter(sim_df, family == 'tweedie')
 dgg_sim <- filter(sim_df, family == 'delta-gengamma')
 
 family_label <- tibble(
-  fit_family = c('dl', 'dg', 'tw', 'dgg'), 
+  fit_family = c('dl', 'dg', 'tw', 'dgg'),
   family = c('lognormal', 'gamma', 'tweedie', 'gengamma'))
 
 # Speed test
@@ -22,8 +22,8 @@ benchmark_expr <- function(sim_dat, fit_family) {
   sdmTMB(formula = observed ~ 1,
       data = sim_dat,
       mesh = sampled_mesh,
-      family = fit_family, 
-      spatial = "on", 
+      family = fit_family,
+      spatial = "on",
       spatiotemporal = 'off'
     )
 }
@@ -41,6 +41,10 @@ speed_test <- rbenchmark::benchmark(
   "tw; dg" = benchmark_expr(sim_dat = tw_sim, fit_family = sdmTMB::delta_gamma()),
   "tw; tw" = benchmark_expr(sim_dat = tw_sim, fit_family = sdmTMB::tweedie()),
   "tw; dgg" = benchmark_expr(sim_dat = tw_sim, fit_family = sdmTMB::delta_gengamma()),
+  "dgg Q = -1; dl" = benchmark_expr(sim_dat = dgg_sim |> filter(Q == 0.001), fit_family = sdmTMB::delta_lognormal()),
+  "dgg Q = -1; dg" = benchmark_expr(sim_dat = dgg_sim |> filter(Q == 0.001), fit_family = sdmTMB::delta_gamma()),
+  "dgg Q = -1; tw" = benchmark_expr(sim_dat = dgg_sim |> filter(Q == 0.001), fit_family = sdmTMB::tweedie()),
+  "dgg Q = -1; dgg" = benchmark_expr(sim_dat = dgg_sim |> filter(Q == 0.001), fit_family = sdmTMB::delta_gengamma()),
   "dgg Q = 0.001; dl" = benchmark_expr(sim_dat = dgg_sim |> filter(Q == 0.001), fit_family = sdmTMB::delta_lognormal()),
   "dgg Q = 0.001; dg" = benchmark_expr(sim_dat = dgg_sim |> filter(Q == 0.001), fit_family = sdmTMB::delta_gamma()),
   "dgg Q = 0.001; tw" = benchmark_expr(sim_dat = dgg_sim |> filter(Q == 0.001), fit_family = sdmTMB::tweedie()),
@@ -49,7 +53,15 @@ speed_test <- rbenchmark::benchmark(
   "dgg Q = 0.5; dg" = benchmark_expr(sim_dat = dgg_sim |> filter(Q == 0.5), fit_family = sdmTMB::delta_gamma()),
   "dgg Q = 0.5; tw" = benchmark_expr(sim_dat = dgg_sim |> filter(Q == 0.5), fit_family = sdmTMB::tweedie()),
   "dgg Q = 0.5; dgg" = benchmark_expr(sim_dat = dgg_sim |> filter(Q == 0.5), fit_family = sdmTMB::delta_gengamma()),
-  replications = 10, 
+  "dgg Q = 0.8; dl" = benchmark_expr(sim_dat = dgg_sim |> filter(Q == 0.5), fit_family = sdmTMB::delta_lognormal()),
+  "dgg Q = 0.8; dg" = benchmark_expr(sim_dat = dgg_sim |> filter(Q == 0.5), fit_family = sdmTMB::delta_gamma()),
+  "dgg Q = 0.8; tw" = benchmark_expr(sim_dat = dgg_sim |> filter(Q == 0.5), fit_family = sdmTMB::tweedie()),
+  "dgg Q = 0.8; dgg" = benchmark_expr(sim_dat = dgg_sim |> filter(Q == 0.5), fit_family = sdmTMB::delta_gengamma()),
+  "dgg Q = 2; dl" = benchmark_expr(sim_dat = dgg_sim |> filter(Q == 0.5), fit_family = sdmTMB::delta_lognormal()),
+  "dgg Q = 2; dg" = benchmark_expr(sim_dat = dgg_sim |> filter(Q == 0.5), fit_family = sdmTMB::delta_gamma()),
+  "dgg Q = 2; tw" = benchmark_expr(sim_dat = dgg_sim |> filter(Q == 0.5), fit_family = sdmTMB::tweedie()),
+  "dgg Q = 2; dgg" = benchmark_expr(sim_dat = dgg_sim |> filter(Q == 0.5), fit_family = sdmTMB::delta_gengamma()),
+  replications = 10,
   columns = c("test", "replications", "elapsed",
                       "relative", "user.self", "sys.self")
 ) |>
@@ -60,7 +72,7 @@ speed_test |>
   group_by(fit_family) |>
   mutate(max_elapsed = max(elapsed)) |>
   left_join(family_label) |>
-ggplot(aes(x = forcats::fct_reorder(family, max_elapsed), y = elapsed)) + 
+ggplot(aes(x = forcats::fct_reorder(family, max_elapsed), y = elapsed)) +
   geom_point() +
   labs(x = "Fit Family", y = "Time Elapsed (s)")
-ggsave(filename = file.path(here::here('figures'), 'benchmark.png'), width = 4.5, height = 4)
+ggsave(filename = file.path(here::here('figures', 'cross-sim'), 'benchmark.png'), width = 4.5, height = 4)

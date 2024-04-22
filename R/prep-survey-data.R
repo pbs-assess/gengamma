@@ -38,7 +38,7 @@ clean_dat <- survey_dat |>
     present = ifelse(catch_weight > 0, 1, 0)) |>
   mutate(offset = log(area_swept / 1e5)) |>
   rename(species = "species_common_name") |>
-  select(species, survey_abbrev, year, depth_m, X, Y, longitude, latitude,
+  select(species, species_code, survey_abbrev, year, depth_m, X, Y, longitude, latitude,
     present, catch_weight, density_kgpm2, offset)
 
 saveRDS(clean_dat, file.path("data-outputs", "clean-survey-data.rds"))

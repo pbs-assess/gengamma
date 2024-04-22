@@ -23,6 +23,14 @@ get_dgmu <- function(Q, sigma, mean) {
   mu
 }
 
+get_mean <- function(Q, sigma, mu) {
+  k <- Q^-2
+  beta <- Q / sigma
+  log_theta <- mu - (log(k) / beta)
+  log_mean <- log_theta + lgamma( (k*beta+1)/beta ) - lgamma( k )
+  exp(log_mean)
+}
+
 # This is modified from the sdmtmb cpp file
 sdm_rgengamma <- function(n, mean, sigma, Q) {
  lambda = Q
@@ -52,3 +60,36 @@ local({ set.seed(1)
   exp(mu + sigma * w)
 })
 
+# Test for Weibull case
+sigma <- 0.5
+ggQ <- 1
+#.mean <- 0.2
+#.mu <- get_dgmu(mean = .mean, sigma = sigma, Q = ggQ)
+.mu <- 0.2
+.mean <- get_mean(Q = ggQ, sigma = sigma, mu = .mu)
+set.seed(1)
+my_w <- rgengamma(n = 1e6, mean = .mean, sigma = sigma, Q = ggQ)
+set.seed(1)
+rw <- rweibull(n = 1e6, shape = 1 / sigma, scale = exp(.mu))
+# Test the case using flexsurv::rgengamma()
+fs_w <- flexsurv::rgengamma(1e6, mu = .mu, sigma = sigma, Q=ggQ)
+
+par(mfrow = c(1, 3))
+hist(my_w); hist(rw); hist(fs_w)
+
+local({ set.seed(1)
+  mu <- .mu
+  w <- log(ggQ^2 * rgamma(n = 1, 1/ggQ^2, 1))/ggQ
+  exp(mu + sigma * w)
+})
+
+
+dweibull(x, shape=1/sigma, scale=exp(mu))
+
+dgengamma(x, mu, sigma, Q=1)	=	dweibull(x, shape=1/sigma, scale=exp(mu))
+
+
+dweibull(x, shape=1/sigma, scale=exp(mu))
+
+actuar::rinvweibull(n = 1, shape, rate = 1, scale = 1/rate)
+actuar::dinvweibull(n = 1, shape, rate = 1, scale = 1/rate)

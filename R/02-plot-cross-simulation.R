@@ -23,7 +23,7 @@ plot_linedot <- function(.data, .x, .ncol = NULL, xint = 0.95) {
   guides(colour = 'none')
 }
 
-fig_dir <- here::here('figures')
+fig_dir <- here::here('figures', 'cross-sim')
 fit_dir <- here::here('data-outputs', 'fit-summaries')
 ind_dir <- here::here('data-outputs', 'index')
 
@@ -38,10 +38,16 @@ relevel_fit_family <- function(df, fam_levels = c('gengamma', 'gamma', 'tweedie'
 }
 
 # Look at real data to figure out what these should be.
-Qs_to_plot <- c(-1, 0.001, 0.5, 0.8, 1, 2)
+Qs_to_plot <- c(NA, -1, 0.001, 0.5, 0.8, 1, 2)
 
+filter_plot_df <- function(x) {
+  x |>
+  filter(Q %in% Qs_to_plot) |>
+  #filter(cv == 0.95, sigma_O == 1)
+  filter(!(cv == 0.8 & sigma_O == 0.6))
+}
 index_df <- file.path(ind_dir, list.files(ind_dir)) |>
-  purrr::map_dfr(readRDS) |>
+  purrr::map_dfr(readRDS)
 
 cross_combos <- bind_rows(
   tibble(Q = NA, sim_family = c('delta-lognormal', 'delta-gamma', 'tweedie')),
@@ -71,7 +77,8 @@ title_levels <- unique(plot_df$title)
 title_levels <- c(title_levels[-1], title_levels[1])
 plot_df <- plot_df |>
   mutate(title = factor(title, levels = title_levels)) |>
-  filter(!(Q %in% c(-5, -0.001, 5))) |>
+  #filter(!(Q %in% c(-5, -0.001, 5))) |>
+  filter_plot_df() |>
   mutate(xtitle = paste0('cv = ', cv, "\nsigma_O = ", sigma_O)) |>
   relevel_fit_family()
 
@@ -81,30 +88,30 @@ plot_df <- plot_df |>
 # - examine bias in estimates and how the above relates to the Q value
 
 tag <- ""
-plot_violin(plot_df, .x = RMSE, .ncol = 5) +
+rmse <- plot_violin(plot_df, .x = RMSE, .ncol = 5) +
   ggtitle("RMSE") +
   facet_grid(xtitle ~ title)
-ggsave(filename = file.path(fig_dir, paste0('rmse', tag, '.png')), width = 11, height = 6.5)
+ggsave(rmse, filename = file.path(fig_dir, paste0('rmse', tag, '.png')), width = 11, height = 6.5)
 
 
-plot_violin(plot_df, .x = MRE, .ncol = 5) +
+mre <- plot_violin(plot_df, .x = MRE, .ncol = 5) +
   ggtitle("MRE") +
   facet_grid(xtitle ~ title)
-ggsave(filename = file.path(fig_dir, paste0('mre', tag, '.png')), width = 11, height = 6.5)
+ggsave(mre, filename = file.path(fig_dir, paste0('mre', tag, '.png')), width = 11, height = 6.5)
 
-plot_violin(plot_df, .x = (d_aic + 1), .ncol = 5) +
+daic <- plot_violin(plot_df, .x = (d_aic + 1), .ncol = 5) +
   scale_x_continuous(trans = 'log10') +
   geom_vline(xintercept = 1, linetype = 'dashed') +
   facet_grid(xtitle ~ title) +
   ggtitle("Delta AIC")
-
-ggplot(plot_df, aes(x = (d_aic + 1), y = fit_family)) +
-  geom_point(alpha = 0.5, colour = 'grey50') +
-  stat_summary(fun = mean, geom = "point") +
-  scale_x_continuous(trans = 'log10') +
-  geom_vline(xintercept = 1, linetype = 'dashed') +
-  facet_grid(xtitle ~ title) +
-  ggtitle("Delta AIC")
+daic
+# ggplot(plot_df, aes(x = (d_aic + 1), y = fit_family)) +
+#   geom_point(alpha = 0.5, colour = 'grey50') +
+#   stat_summary(fun = mean, geom = "point") +
+#   scale_x_continuous(trans = 'log10') +
+#   geom_vline(xintercept = 1, linetype = 'dashed') +
+#   facet_grid(xtitle ~ title) +
+#   ggtitle("Delta AIC")
 
 ggsave(filename = file.path(fig_dir, paste0('daic', tag, '.png')), width = 11, height = 6.5)
 
@@ -133,6 +140,8 @@ sanity_tally |>
   mutate(title = ifelse(is.na(Q), sim_family, paste0(sim_family, ": Q=", signif(Q, digits = 2)))) |>
   mutate(title = factor(title, levels = title_levels)) |>
   mutate(xtitle = paste0('cv = ', cv, "\nsigma_O = ", sigma_O)) |>
+  filter_plot_df() |>
+  relevel_fit_family() |>
 plot_linedot(.x = pass_prop, .ncol = 5, xint = 1.0) +
   facet_grid(xtitle ~ title) +
   ggtitle("Passed sanity check")

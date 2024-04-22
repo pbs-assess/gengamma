@@ -7,7 +7,8 @@ theme_set(theme_light())
 source(here::here('R', '00-utils.R'))
 
 # ------------
-fits <- readRDS(here::here('data-outputs', 'fits', '42-cv0.8-sigmao0-b0-n1000.rds'))
+#fits <- readRDS(here::here('data-outputs', 'fits', '42-cv0.8-sigmao0-b0-n1000.rds'))
+fits <- readRDS(here::here('data-outputs', 'fits', '42-cv0.95-sigmao1-b0-n1000.rds'))
 
 sanity_df <- purrr::map_dfr(fits, ~get_sanity_df(.x, silent = TRUE))
 
@@ -16,17 +17,23 @@ fit_df <- purrr::map_dfr(fits, get_fitted_estimates) |>
   mutate(title = ifelse(is.na(Q), sim_family, paste0(sim_family, ": Q=", signif(Q, digits = 2)))) |>
   arrange(sim_family, Q) |>
   left_join(sanity_df)
-title_levels <- unique(fit_df$title)
+title_levels <- c(unique(fit_df$title)[-1], "delta-gamma")
 
 idx <- fit_df |>
-  filter(sim_family == "delta-gengamma", Q == -2, fit_family == "gengamma") |>
+  #filter(sim_family == "delta-gengamma", Q == -2, fit_family == "gengamma") |>
+  filter(is.na(Q) | !(Q %in% c(-5, 5))) |>
   pull(id)
 
 # RQR
 # ------------------
-rqr_df <- purrr::map_dfr(1:length(fits), ~ get_rqr(fits[[.x]], id = .x)) |>
+# rqr_df <- purrr::map_dfr(1:length(fits), ~ get_rqr(fits[[.x]], id = .x)) |>
+#   left_join(fit_df)
+# beep()
+
+rqr_df <- purrr::map_dfr(idx, ~ get_rqr(fits[[.x]], id = .x)) |>
   left_join(fit_df)
 beep()
+
 
 # Check gengamma rqr
 # idx <- fit_df |>
@@ -37,6 +44,7 @@ rqr_df |>
   # filter(id %in% idx) |>
   filter(sanity_allok == TRUE) |>
   mutate(title = factor(title, levels = title_levels)) |>
+  filter(!Q %in% c(-5, 5)) |>
   ggplot(aes(sample = r)) +
   geom_qq() +
   geom_abline(intercept = 0, slope = 1) +
