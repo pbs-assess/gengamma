@@ -41,6 +41,19 @@ clean_dat <- survey_dat |>
   select(species, species_code, survey_abbrev, year, depth_m, X, Y, longitude, latitude,
     present, catch_weight, density_kgpm2, offset)
 
+mean_pos_sets <- clean_dat |>
+  group_by(species, survey_abbrev, year) |>
+  summarise(pos = sum(present), n_sets = n()) |>
+  summarise(mean_pos = mean(pos), mean_sets = mean(n_sets), .groups = 'drop') |>
+  mutate(mean_pos_sets = paste0(round(mean_pos), "/", round(mean_sets)),
+         prop_pos = round(mean_pos / mean_sets, digits = 2))
+
+spp_region_keep <- mean_pos_sets |>
+  filter(prop_pos >= 0.05) |>
+  select(species, survey_abbrev)
+
+dat_out <- left_join(spp_region_keep, clean_dat)
+
 saveRDS(clean_dat, file.path("data-outputs", "clean-survey-data.rds"))
 
 # ------------------------------------------------------------------------------
