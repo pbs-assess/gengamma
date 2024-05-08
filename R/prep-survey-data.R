@@ -15,6 +15,7 @@ library(dplyr)
 #   "Yellowmouth Rockfish", "Yellowtail Rockfish")
 # species_list <- tolower(species_list)
 
+# all_spp_trawl <- list()
 # for (i in species_list) {
 #   cat(i, "\n")
 #   species <- i
@@ -23,6 +24,16 @@ library(dplyr)
 
 # survey_dat <- do.call("rbind", all_spp_trawl)
 # saveRDS(survey_dat, file = "data/survey-data.rds")
+
+# survey_index <- list()
+# for (i in species_list) {
+#   cat(i, "\n")
+#   species <- i
+#   survey_index[[i]] <- try({gfdata::get_survey_index(species, ssid = c(1, 3, 4, 16))})
+# }
+# survey_index_df <- bind_rows(survey_index)
+# saveRDS(survey_index_df, file = "data/survey-design-index.rds")
+
 # ------------------------------------------------------------------------------
 # Clean data used for analysis:
 survey_dat <- readRDS("data/survey-data.rds")
