@@ -8,7 +8,7 @@ source(here::here('R', '00-utils.R'))
 
 # ------------
 #fits <- readRDS(here::here('data-outputs', 'fits', '42-cv0.8-sigmao0-b0-n1000.rds'))
-fits <- readRDS(here::here('data-outputs', 'fits', '42-cv0.95-sigmao1-b0-n1000.rds'))
+fits <- readRDS(here::here('data-outputs', 'cross-sim', 'fits', '42-cv0.95-sigmao1-b0-n1000-poisson-link.rds'))
 
 sanity_df <- purrr::map_dfr(fits, ~get_sanity_df(.x, silent = TRUE))
 
