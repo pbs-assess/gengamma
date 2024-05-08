@@ -3,7 +3,7 @@ library(ggplot2)
 
 theme_set(theme_light(base_size = 12))
 
-sim_list <- readRDS(file.path(here::here('data-outputs'), 'sim-list.rds'))
+sim_list <- readRDS(file.path(here::here('data-outputs', 'cross-sim'), 'sim-list.rds'))
 sim_df <- sim_list$sim_df
 sampled_mesh <- sim_list$sampled_mesh
 

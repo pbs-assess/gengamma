@@ -6,18 +6,19 @@ library(sdmTMB)
 
 source(here::here('R', '00-utils.R'))
 
-dir.create(here::here('data-outputs'), showWarnings = FALSE, recursive = TRUE)
-dir.create(here::here('data-outputs', 'errors'), showWarnings = FALSE, recursive = TRUE)
-dir.create(here::here('data-outputs', 'index'), showWarnings = FALSE, recursive = TRUE)
-dir.create(here::here('data-outputs', 'fit-summaries'), showWarnings = FALSE, recursive = TRUE)
-dir.create(here::here('data-outputs', 'fits'), showWarnings = FALSE, recursive = TRUE)
-dir.create(here::here('figures'), showWarnings = FALSE, recursive = TRUE)
-out_dir <- here::here('data-outputs')
-error_dir <- here::here('data-outputs', 'errors')
-fig_dir <- here::here('figures')
-fit_dir <- here::here('data-outputs', 'fits')
-fit_sum_dir <- here::here('data-outputs', 'fit-summaries')
-ind_dir <- here::here('data-outputs', 'index')
+out_dir <- here::here('data-outputs', 'cross-sim')
+error_dir <- file.path(out_dir, 'errors')
+fit_dir <- file.path(out_dir, 'fits')
+fit_sum_dir <- file.path(out_dir, 'fit-summaries')
+ind_dir <- file.path(out_dir, 'index')
+fig_dir <- here::here('figures', 'cross-sim')
+
+dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
+dir.create(error_dir, showWarnings = FALSE, recursive = TRUE)
+dir.create(ind_dir, showWarnings = FALSE, recursive = TRUE)
+dir.create(fit_sum_dir, showWarnings = FALSE, recursive = TRUE)
+dir.create(fit_dir, showWarnings = FALSE, recursive = TRUE)
+dir.create(fig_dir, showWarnings = FALSE, recursive = TRUE)
 
 # Steps:
 # 1. Simulate data from Lognormal, Gamma, Tweedie, and Gengamma

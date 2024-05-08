@@ -14,9 +14,14 @@ spp_list <- unique(dat$species)
 syn_grid <- as_tibble(gfplot::synoptic_grid) |>
   select(survey, X, Y, depth)
 
+#tag <- '_sp-on-st-iid'
+#tag <- '_sp-on-st-off'
+.spatial <- "off"
+.spatiotemporal <- "off"
+tag <- paste0("_sp-", .spatial, "-st-", .spatiotemporal, "", sep = "")
 dc <- here::here("data", "raw")
 out_dir <- here::here("data-outputs", "bcgf-outputs")
-fit_dir <- here::here("data-outputs", "bcgf-outputs", "fits")
+fit_dir <- here::here("data-outputs", "bcgf-outputs", paste0("fits", tag))
 dir.create(fit_dir, showWarnings = FALSE, recursive = TRUE)
 
 get_fit <- function(survey_dat, formula, region, family, species = NULL, cutoff = 8, time = "year",

@@ -23,14 +23,6 @@ plot_linedot <- function(.data, .x, .ncol = NULL, xint = 0.95) {
   guides(colour = 'none')
 }
 
-fig_dir <- here::here('figures', 'cross-sim')
-fit_dir <- here::here('data-outputs', 'fit-summaries')
-ind_dir <- here::here('data-outputs', 'index')
-
-# Load data
-# ------------------------------------------------------------------------------
-Q_values <- dget(file.path('data-outputs', 'Q-values.txt'))
-
 relevel_fit_family <- function(df, fam_levels = c('gengamma', 'gamma', 'tweedie', 'lognormal' )) {
   df |>
   mutate(fit_family = tolower(fit_family)) |>
@@ -54,6 +46,10 @@ cross_combos <- bind_rows(
   tidyr::crossing(Q = Q_values, sim_family = 'delta-gengamma')
   ) |>
   tidyr::crossing(fit_family = c('lognormal', 'Gamma', 'tweedie', 'gengamma'))
+out_dir <- here::here('data-outputs', 'cross-sim')
+fig_dir <- here::here('figures', 'cross-sim')
+fit_dir <- here::here(out_dir, 'fit-summaries')
+ind_dir <- here::here(out_dir, 'index')
 
 sanity_tally <- left_join(
   cross_combos |> tidyr::unite(col = 'sim_combo_key', sim_family, Q, fit_family, sep = ":", remove = TRUE),
