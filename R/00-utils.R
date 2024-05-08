@@ -116,14 +116,14 @@ get_fit <- function(survey_dat, formula, region, family, species = NULL,
     sanity_check <- all(unlist(sdmTMB::sanity(fit, gradient_thresh = 0.005)))
   }
   # Turn off spatial field if model does not fit and spatiotemporal == "off"
-  if ((!inherits(fit, 'sdmTMB') | !sanity_check) & (sp == "on" & st == "off")) {
-    message("\tFitting: sp = ", sp, ", st = ", st, " for ", species, "-", region, "-", family, " failed")
-    message("\tUpdating with sp = off")
-    fit <- tryCatch(
-      update(fit, spatial = "off"),
-      error = function(e) paste(species, region, family, "\n\tError:", e, sep = " - ")
-    )
-  }
+  # if ((!inherits(fit, 'sdmTMB') | !sanity_check) & (sp == "on" & st == "off")) {
+  #   message("\tFitting: sp = ", sp, ", st = ", st, " for ", species, "-", region, "-", family, " failed")
+  #   message("\tUpdating with sp = off")
+  #   fit <- tryCatch(
+  #     update(fit, spatial = "off"),
+  #     error = function(e) paste(species, region, family, "\n\tError:", e, sep = " - ")
+  #   )
+  # }
   fit
 }
 
