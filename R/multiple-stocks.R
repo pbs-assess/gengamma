@@ -51,6 +51,53 @@ dir.create(fit_dir, showWarnings = FALSE, recursive = TRUE)
 # cutoff <- 8
 # save_fits <- TRUE
 
+# get_fit <- function(survey_dat, formula, region, family, species = NULL, cutoff = 8, time = "year",
+#                    sp = "on", st = "iid", offset = "offset") {
+#   survey_dat <- filter(survey_dat, survey_abbrev %in% region)
+
+#   if (is.null(species)) {
+#     species <- unique(survey_dat$species)
+#   } else {
+#     survey_dat <- filter(survey_dat, species == {{species}})
+#   }
+#   mesh <- make_mesh(survey_dat, xy_cols = c("X", "Y"), cutoff = cutoff)
+#   fit <- tryCatch(
+#     sdmTMB(
+#       formula = formula,
+#       data = survey_dat,
+#       mesh = mesh,
+#       time = "year",
+#       spatial = sp,
+#       spatiotemporal = st,
+#       offset = "offset",
+#       family = choose_family(family)
+#     ),
+#     error = function(e) paste(species, region, family, "\n\tError:", e, sep = " - ")
+#   )
+
+#   if (inherits(fit, 'sdmTMB')) {
+#     sanity_check <- all(unlist(sdmTMB::sanity(fit, gradient_thresh = 0.005)))
+#   }
+#   # Turn off spatial field if model does not fit and spatiotemporal == "off"
+#   if ((!inherits(fit, 'sdmTMB') | !sanity_check) & (sp == "on" & st == "off")) {
+#     message("\tFitting: sp = ", sp, ", st = ", st, " for ", species, "-", region, "-", family, " failed")
+#     message("\tUpdating with sp = off")
+#     fit <- tryCatch(
+#       update(fit, spatial = "off"),
+#       error = function(e) paste(species, region, family, "\n\tError:", e, sep = " - ")
+#     )
+#   }
+#   fit
+# }
+
+regions <- c("SYN WCVI", "SYN QCS", "SYN HS", "SYN WCHG")
+families <- c("tweedie",
+  "delta-gamma", "delta-lognormal", "delta-gengamma")
+  #"delta-plink-lognormal", "delta-plink-gamma", "delta-plink-gengamma")
+tofit <- tidyr::expand_grid(.region = regions, .family = families,
+  .species = spp_list) |>
+  mutate(.id = row_number())
+
 # test_fit <-
 #   tofit |>
 #     filter(.species == species) |>
