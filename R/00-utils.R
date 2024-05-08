@@ -72,9 +72,11 @@ choose_family <- function(fit_fam) {
   )
 }
 
-# Fit real data:aic
-get_fit <- function(survey_dat, formula, region, family, species = NULL, cutoff = 8, time = "year",
-                   sp = "on", st = "iid", offset = "offset") {
+# Fit real data
+get_fit <- function(survey_dat, formula, region, family, species = NULL,
+                  cutoff = 8, time = "year",
+                   sp = "on", st = "iid", offset = "offset",
+                   use_priors = FALSE) {
   survey_dat <- filter(survey_dat, survey_abbrev %in% region)
 
   if (is.null(species)) {
@@ -83,6 +85,15 @@ get_fit <- function(survey_dat, formula, region, family, species = NULL, cutoff 
     survey_dat <- filter(survey_dat, species == {{species}})
   }
   mesh <- make_mesh(survey_dat, xy_cols = c("X", "Y"), cutoff = cutoff)
+
+  ny <- length(unique(survey_dat$year))
+
+  b_priors <- sdmTMB::normal(NA, NA)
+
+  if (use_priors) {
+    b_priors <- sdmTMB::normal(rep(0, ny), rep(30, ny))
+  }
+
   fit <- tryCatch(
     sdmTMB(
       formula = formula,
@@ -92,7 +103,8 @@ get_fit <- function(survey_dat, formula, region, family, species = NULL, cutoff 
       spatial = sp,
       spatiotemporal = st,
       offset = "offset",
-      family = choose_family(family)
+      family = choose_family(family),
+      priors = sdmTMBpriors(b = b_priors)
     ),
     error = function(e) paste(species, region, family, "\n\tError:", e, sep = " - ")
   )
