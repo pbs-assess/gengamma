@@ -172,43 +172,51 @@ get_sanity_df <- function(fit_obj, real_data = FALSE, silent = FALSE, .gradient_
 }
 
 get_fitted_estimates <- function(fit_obj, real_data = FALSE) {
-  sd_rep_est <- as.list(fit_obj$sd_report, what = "Estimate")
-  sd_rep_se <- as.list(fit_obj$sd_report, what = "Std")
-
-  gg_Q <- sd_rep_est$gengamma_Q
-  gg_Q_se <- sd_rep_se$gengamma_Q
-
-  family1 <- family(fit_obj)[[1]][[1]]
-  family2 <- ifelse(family1 == 'tweedie', 'tweedie', family(fit_obj)[[2]][[1]])
-  mod <- ifelse(family1 == 'tweedie', 1, 2)
-
-  tidy_ran <- tidy(fit_obj, effects = 'ran_pars', model = mod) |>
-    tidyr::pivot_wider(names_from = term, values_from = c(estimate, std.error))
-
-  if (!real_data) {
-    out <- tibble(
-      sim_family = unique(fit_obj$data$family),
-      fit_family = family2,
-      Q = unique(fit_obj$data$Q),
-      est_Q = gg_Q,
-      est_Qse = gg_Q_se
-    )
+  if (inherits(fit_obj, 'sdmTMB')) {
     type <- family(fit_obj)$type
+
+    sd_rep_est <- as.list(fit_obj$sd_report, what = "Estimate")
+    sd_rep_se <- as.list(fit_obj$sd_report, what = "Std")
+
+    gg_Q <- sd_rep_est$gengamma_Q
+    gg_Q_se <- sd_rep_se$gengamma_Q
+
+    family1 <- family(fit_obj)[[1]][[1]]
+    family2 <- ifelse(family1 == 'tweedie', 'tweedie', family(fit_obj)[[2]][[1]])
+    mod <- ifelse(family1 == 'tweedie', 1, 2)
+
+    tidy_ran <- tidy(fit_obj, effects = 'ran_pars', model = mod) |>
+      tidyr::pivot_wider(names_from = term, values_from = c(estimate, std.error))
+
+    if (!real_data) {
+      out <- tibble(
+        sim_family = unique(fit_obj$data$family),
+        fit_family = family2,
+        Q = unique(fit_obj$data$Q),
+        est_Q = gg_Q,
+        est_Qse = gg_Q_se,
+        type = type
+      )
+    } else {
+      out <- tibble(
+        fit_family = family2,
+        type = type,
+        est_Q = gg_Q,
+        est_Qse = gg_Q_se,
+        spatial = unique(fit_obj$spatial),
+        spatiotemporal = unique(fit_obj$spatiotemporal),
+        aic = AIC(fit_obj)
+      )
+    }
+    bind_cols(out, tidy_ran)
   } else {
-    out <- tibble(
-      fit_family = family2,
-      est_Q = gg_Q,
-      est_Qse = gg_Q_se,
-      spatial = unique(fit_obj$spatial),
-      spatiotemporal = unique(fit_obj$spatiotemporal),
-      aic = AIC(fit_obj)
-    )
+    fit_obj
   }
-  bind_cols(out, tidy_ran)
 }
 
 get_index_summary <- function(predict_obj) {
   fit_obj <- predict_obj$fit_obj
+
   type <- family(fit_obj)$type
   sd_rep_est <- as.list(predict_obj$fit_obj$sd_report, what = "Estimate")
   sd_rep_se <- as.list(predict_obj$fit_obj$sd_report, what = "Std")
