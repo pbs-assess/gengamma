@@ -31,6 +31,7 @@ dir.create(fig_dir, showWarnings = FALSE, recursive = TRUE)
 sim_fit <- function(predictor_dat, mesh_sim,
                    cv, b0, sigma_O, tweedie_p,
                    Q_values, gengamma_phi,
+                   type = "", # provide option to toggle poisson-link on/off
                    sp = "on", st = "off",
                    sample_size = 500,
                    rep = NULL, get_simulation_output = FALSE,
@@ -89,7 +90,7 @@ sim_fit <- function(predictor_dat, mesh_sim,
   # ----------------------------------
   # SIMULATE{y_i(i,m) = exp(rnorm(log(mu_i(i,m)) - pow(phi(m), Type(2)) / Type(2), phi(m)));}
   dl_sim <- sampled |>
-    mutate(family = 'delta-lognormal',
+    mutate(family = paste0('delta-lognormal', type),
           phi = get_phi(family = 'lognormal', cv = cv),
           catch_observed = exp(rnorm(n(), log(mu) - 0.5 * phi^2, phi))
     ) |>
@@ -101,7 +102,7 @@ sim_fit <- function(predictor_dat, mesh_sim,
   # s2 = mu_i(i,m) / s1;        // scale
   # SIMULATE{y_i(i,m) = rgamma(s1, s2);}
   dg_sim <- sampled |>
-    mutate(family = 'delta-gamma',
+    mutate(family = paste0('delta-gamma', type),
           phi = get_phi(family = 'gamma', cv = cv),
           catch_observed = rgamma(n(), shape = phi, scale = mu / phi)
     ) |>
@@ -125,7 +126,7 @@ sim_fit <- function(predictor_dat, mesh_sim,
     sampled |>
       mutate(Q = .Q,
             phi = .phi,
-            family = 'delta-gengamma',
+            family = paste0('delta-gengamma', type),
             catch_observed = rgengamma(n(), mean = mu, sigma = .phi, Q = .Q))
       }
     ) |>
@@ -135,6 +136,9 @@ sim_fit <- function(predictor_dat, mesh_sim,
   # Fit cross-simulations
   # ------------------------------------------------------------------------------
   .families <- c('delta-lognormal', 'delta-gamma', 'tweedie', 'delta-gengamma')
+  # if (type == '-poisson-link') {
+  #   .families <- c('delta-lognormal-poisson-link', 'delta-gamma-poisson-link', 'tweedie', 'delta-gengamma-poisson-link')
+  # }
   sim_df <- bind_rows(dl_sim, dg_sim, tw_sim, dgg_sim)
 
   if (get_simulation_output) {
@@ -285,8 +289,10 @@ cv <- c(0.8, 0.95)[1] # lingcod wcvi cv ~0.83; dogfish wcvi gamma cv ~0.95
 b0 <- 0
 sigma_O <- c(0.2, 0.6, 1.0, 1.75)[2] #dogfish wcvi gamma ~1.0
 tweedie_p <- 1.5
-n_reps <- 50
-tag <- paste0('cv', cv, '-sigmao', sigma_O, '-nreps', n_reps)
+type <- ""
+#type <- "-poisson-link"
+n_reps <- 200
+tag <- paste0('cv', cv, '-sigmao', sigma_O, '-nreps', n_reps, type)
 
 progressr::handlers(global = TRUE)
 progressr::handlers("progress")

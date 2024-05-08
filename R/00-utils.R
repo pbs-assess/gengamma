@@ -66,6 +66,9 @@ choose_family <- function(fit_fam) {
       "delta-gamma" = sdmTMB::delta_gamma(link2 = "log", type = "standard"),
       "delta-lognormal" = sdmTMB::delta_lognormal(link2 = "log", type = "standard"),
       "delta-gengamma" = sdmTMB::delta_gengamma(link2 = "log", type = "standard"),
+      "delta-gamma-poisson-link" = sdmTMB::delta_gamma(link2 = "log", type = "poisson-link"),
+      "delta-lognormal-poisson-link" = sdmTMB::delta_lognormal(link2 = "log", type = "poisson-link"),
+      "delta-gengamma-poisson-link" = sdmTMB::delta_gengamma(link2 = "log", type = "poisson-link"),
       "tweedie" = sdmTMB::tweedie(link = "log"),
       # Add more cases for other families if needed
       stop("Invalid family name")
@@ -146,20 +149,23 @@ fit_cross <- function(.data, .mesh, sim_fam, .Q = NA, fit_fam,
 }
 
 get_sanity_df <- function(fit_obj, real_data = FALSE, silent = FALSE, .gradient_thresh = 0.001) {
+  type <- family(fit_obj)$type
   if (!real_data) {
   out <- tibble(
     sim_family = unique(fit_obj$data$family),
     fit_family = ifelse(family(fit_obj)[[1]][[1]] == 'tweedie', 'tweedie', family(fit_obj)[[2]][[1]]),
     Q = unique(fit_obj$data$Q),
     sanity_allok = sanity(fit_obj, silent = silent, gradient_thresh = .gradient_thresh)$all_ok,
-    gradient_thresh = .gradient_thresh
+    gradient_thresh = .gradient_thresh,
+    type = type
     )
   } else {
     out <- tibble(
       species = unique(fit_obj$data$species),
       region = unique(fit_obj$data$survey_abbrev),
       fit_family = ifelse(family(fit_obj)[[1]][[1]] == 'tweedie', 'tweedie', family(fit_obj)[[2]][[1]]),
-      gradient_thresh = .gradient_thresh
+      gradient_thresh = .gradient_thresh,
+      type = type
       ) |>
       bind_cols(tibble::tibble(!!!sanity(fit_obj, silent = silent, gradient_thresh = .gradient_thresh)))
   }
@@ -187,6 +193,7 @@ get_fitted_estimates <- function(fit_obj, real_data = FALSE) {
       est_Q = gg_Q,
       est_Qse = gg_Q_se
     )
+    type <- family(fit_obj)$type
   } else {
     out <- tibble(
       fit_family = family2,
@@ -202,6 +209,7 @@ get_fitted_estimates <- function(fit_obj, real_data = FALSE) {
 
 get_index_summary <- function(predict_obj) {
   fit_obj <- predict_obj$fit_obj
+  type <- family(fit_obj)$type
   sd_rep_est <- as.list(predict_obj$fit_obj$sd_report, what = "Estimate")
   sd_rep_se <- as.list(predict_obj$fit_obj$sd_report, what = "Std")
 
@@ -218,6 +226,7 @@ get_index_summary <- function(predict_obj) {
     sim_link = unique(fit_obj$data$link),
     #fit_family1 = family(fit_obj)[[1]][[1]],
     fit_family = ifelse(family(fit_obj)[[1]][[1]] == 'tweedie', 'tweedie', family(fit_obj)[[2]][[1]]),
+    type = type,
     phi = unique(fit_obj$data$phi),
     cv = unique(fit_obj$data$cv),
     Q = unique(fit_obj$data$Q),
