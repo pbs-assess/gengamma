@@ -19,7 +19,7 @@ family_label <- tibble(
 # Speed test
 # ------------------------------------------------------------------------------
 benchmark_expr <- function(sim_dat, fit_family) {
-  sdmTMB(formula = observed ~ 1,
+  sdmTMB::sdmTMB(formula = observed ~ 1,
       data = sim_dat,
       mesh = sampled_mesh,
       family = fit_family,
@@ -66,7 +66,7 @@ speed_test <- rbenchmark::benchmark(
                       "relative", "user.self", "sys.self")
 ) |>
   tidyr::separate(test, into = c('sim_family', 'fit_family'), sep = '; ')
-beep()
+beepr::beep()
 
 speed_test |>
   group_by(fit_family) |>
