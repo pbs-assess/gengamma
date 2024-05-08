@@ -310,11 +310,12 @@ prog_fxn <- function(xs) {
 message("\tChecking for index file tag: \n\t   ", tag)
 if (!file.exists(file.path(ind_dir, paste0(tag, '.rds')))) {
   options(future.globals.maxSize = 800 * 1024 ^ 2) # 800 mb
-  if (!is_rstudio && is_unix) {
-    future::plan(future::multicore, workers = cores)
-  } else {
+  # Multicore crashes for me after updating to R 4.4 :(
+  # if (!is_rstudio && is_unix) {
+  #   future::plan(future::multicore, workers = cores)
+  # } else {
     future::plan(future::multisession, workers = cores)
-  }
+  # }
   out <- prog_fxn(1:n_reps)
   future::plan(future::sequential)
 
