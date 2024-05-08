@@ -1,14 +1,17 @@
 library(dplyr)
-#library(sdmTMB)
-devtools::load_all('../sdmTMB')
+#devtools::load_all('../sdmTMB')
+#pak::pkg_install("pbs-assess/sdmTMB")
+library(sdmTMB)
 library(ggplot2)
 theme_set(gfplot::theme_pbs())
 
 source("R/00-utils.R")
 
 # Load data
-dat <- readRDS(file.path("data-outputs", "clean-survey-data.rds"))
-spp_list <- unique(dat$species)
+dat <- readRDS(file.path("data-outputs", "clean-survey-data.rds")) |>
+  filter(survey_abbrev != "SYN WCHG")
+spp_regions <- distinct(dat, species, survey_abbrev) |>
+  rename(.species = 'species', .region = 'survey_abbrev')
 
 # Simplified synoptic grid
 syn_grid <- as_tibble(gfplot::synoptic_grid) |>
@@ -24,53 +27,16 @@ out_dir <- here::here("data-outputs", "bcgf-outputs")
 fit_dir <- here::here("data-outputs", "bcgf-outputs", paste0("fits", tag))
 dir.create(fit_dir, showWarnings = FALSE, recursive = TRUE)
 
-get_fit <- function(survey_dat, formula, region, family, species = NULL, cutoff = 8, time = "year",
-                   sp = "on", st = "iid", offset = "offset") {
-  survey_dat <- filter(survey_dat, survey_abbrev %in% region)
-
-  if (is.null(species)) {
-    species <- unique(survey_dat$species)
-  } else {
-    survey_dat <- filter(survey_dat, species == {{species}})
-  }
-  mesh <- make_mesh(survey_dat, xy_cols = c("X", "Y"), cutoff = cutoff)
-  fit <- tryCatch(
-    sdmTMB(
-      formula = formula,
-      data = survey_dat,
-      mesh = mesh,
-      time = "year",
-      spatial = sp,
-      spatiotemporal = st,
-      offset = "offset",
-      family = choose_family(family)
-    ),
-    error = function(e) paste(species, region, family, "\n\tError:", e, sep = " - ")
-  )
-
-  if (inherits(fit, 'sdmTMB')) {
-    sanity_check <- all(unlist(sdmTMB::sanity(fit, gradient_thresh = 0.005)))
-  }
-  # Turn off spatial field if model does not fit and spatiotemporal == "off"
-  if ((!inherits(fit, 'sdmTMB') | !sanity_check) & (sp == "on" & st == "off")) {
-    message("\tFitting: sp = ", sp, ", st = ", st, " for ", species, "-", region, "-", family, " failed")
-    message("\tUpdating with sp = off")
-    fit <- tryCatch(
-      update(fit, spatial = "off"),
-      error = function(e) paste(species, region, family, "\n\tError:", e, sep = " - ")
-    )
-  }
-  fit
-}
-
-
-regions <- c("SYN WCVI", "SYN QCS", "SYN HS", "SYN WCHG")
-families <- c("tweedie",
-  "delta-gamma", "delta-lognormal", "delta-gengamma")
-  #"delta-plink-lognormal", "delta-plink-gamma", "delta-plink-gengamma")
-tofit <- tidyr::expand_grid(.region = regions, .family = families,
-  .species = spp_list) |>
-  mutate(.id = row_number())
+# For fitting select species/regions/families
+# ------------------------------------------------------------------------------
+# regions <- c("SYN WCVI", "SYN QCS", "SYN HS", "SYN WCHG")
+# families <- c("tweedie",
+#   "delta-gamma", "delta-lognormal", "delta-gengamma")
+#   #"delta-plink-lognormal", "delta-plink-gamma", "delta-plink-gengamma")
+# tofit <- tidyr::expand_grid(.region = regions, .family = families,
+#   .species = unique(spp_regions$.species)) |>
+#   right_join(spp_regions) |>
+#   mutate(.id = row_number())
 
 #species <- spp_list[[4]]
 #species <- 'north pacific spiny dogfish'
@@ -81,53 +47,34 @@ tofit <- tidyr::expand_grid(.region = regions, .family = families,
 # region <- 'SYN WCVI'
 # scaler <- 1e-3 # QCS needs 1e-1; nothing seems to fix SYN WCVI
 
-sp_file <- paste0(clean_name(species), ".rds")
-cutoff <- 8
-save_fits <- TRUE
+#sp_file <- paste0(clean_name(species), ".rds")
+# cutoff <- 8
+# save_fits <- TRUE
 
-filter(dat, species == 'walleye pollock', survey_abbrev == "SYN WCVI") |>
-  pull(catch_weight) |>
-  hist()
-
-test_fit <-
-  tofit |>
-    filter(.species == species) |>
-    filter(.region == region) |>
-    filter(.family == 'delta-gengamma') |>
-    purrr::pmap(\(.region, .family, .id, .species) {
-        get_fit(survey_dat = dat |> mutate(catch_weight = catch_weight * scaler),
-            formula = as.formula(catch_weight ~ 0 + as.factor(year)),
-            offset = "offset",
-            region = .region, family = .family, species = .species,
-            cutoff = cutoff, sp = "on", st = "off"
-            )
-    })
-beep()
+# test_fit <-
+#   tofit |>
+#     filter(.species == species) |>
+#     filter(.region == region) |>
+#     filter(.family == 'delta-gengamma') |>
+#     purrr::pmap(\(.region, .family, .id, .species) {
+#         get_fit(survey_dat = dat |> mutate(catch_weight = catch_weight * scaler),
+#             formula = as.formula(catch_weight ~ 0 + as.factor(year)),
+#             offset = "offset",
+#             region = .region, family = .family, species = .species,
+#             cutoff = cutoff, sp = "on", st = "off"
+#             )
+#     })
+# beep()
 # if (save_fits) {
 #   message("Saving fits: ", sp_file)
 #   saveRDS(fits, file.path(fit_dir, sp_file))
 # }
 # beep()
-
-# Individual model fitting for checks
-# test <- local({
-#   survey_dat <- dat
-#   .region <- "SYN QCS"
-#   .family <- "tweedie"
-#   .cutoff <- 8
-#   .species <- "butter sole"
-#   get_fit(survey_dat = survey_dat,
-#          formula = as.formula(catch_weight ~ 0 + as.factor(year)),
-#          offset = "offset",
-#          region = .region, family = .family, species = .species,
-#          cutoff = cutoff, sp = "on", st = "iid"
-#   )
-# })
-# test
+# ------------------------------------------------------------------------------
 
 survey_dat <- dat
 cutoff <- 8
-regions <- c("SYN WCVI", "SYN QCS", "SYN HS", "SYN WCHG")
+regions <- c("SYN WCVI", "SYN QCS", "SYN HS")
 families <- c("tweedie",
   "delta-gamma", "delta-lognormal", "delta-gengamma")
   #"delta-plink-lognormal", "delta-plink-gamma", "delta-plink-gengamma")
@@ -138,7 +85,7 @@ family_lu <- c(
   "delta-gengamma" = "gengamma") %>%
   tibble(.family = names(x = .), fit_family = .)
 tofit <- tidyr::expand_grid(.region = regions, .family = families,
-  .species = spp_list) |>
+  .species = unique(spp_regions$.species)) |>
   mutate(.id = row_number())
 
 lu_df <- tofit |>
@@ -150,7 +97,10 @@ saveRDS(lu_df, file.path(out_dir, 'lu-df.rds'))
 # https://github.com/pbs-assess/sdmTMB/issues/263
 # it is also a lot faster
 # Fit models
-choose_multi_type(cores = 8)
+#overwrite_cache = TRUE
+overwrite_cache = FALSE
+#choose_multi_type(cores = 8)
+future::plan(future::multisession, workers = 10)
 progressr::with_progress({
   handler <- progressr::progressor(along = tofit$.id)
   fits <- tofit |>
@@ -164,7 +114,8 @@ progressr::with_progress({
                 formula = as.formula(catch_weight ~ 0 + as.factor(year)),
                 offset = "offset",
                 region = .region, family = .family, species = .species,
-                cutoff = cutoff, sp = "on", st = "off")
+                cutoff = cutoff, sp = .spatial, st = .spatiotemporal,
+                use_priors = FALSE)
         message("Saving fits: ", sp_file)
         saveRDS(f, sp_file)
       }
@@ -176,27 +127,34 @@ progressr::with_progress({
 # ------------------------------------------------------------------------------
 # Examine outputs
 # ------------------------------------------------------------------------------
-f_name <- list.files(fit_dir)
+f_name <- c(
+  list.files(file.path(out_dir, 'fits_sp-off-st-off')),
+  list.files(file.path(out_dir, 'fits_sp-on-st-off')),
+  list.files(file.path(out_dir, 'fits_sp-on-st-on'))
+)
+f_name <- f_name[!grepl('WCHG', f_name)]
 f <- file.path(fit_dir, f_name)
 
 fits <-lapply(f, readRDS) |>
   setNames(stringr::str_extract(f_name, ("(.*)\\.rds"), group = 1))
+beep()
 
-if (!file.exists(file.path(out_dir, "sanity-df.rds"))) {
+#tag
+tag <- "-random-effects-on-and-off"
+sanity_filename <- paste0("sanity-df", tag, ".rds")
+if (!file.exists(file.path(out_dir, sanity_filename))) {
 sanity_df <- purrr::keep(fits, ~inherits(.x, "sdmTMB")) |>
   purrr::map_dfr(get_sanity_df, real_data = TRUE, silent = TRUE, .gradient_thresh = 0.005) |>
   left_join(lu_df, by = c("species" = ".species", "region" = ".region", "fit_family"))
-saveRDS(sanity_df, file.path(out_dir, "sanity-df.rds"))
+saveRDS(sanity_df, file.path(out_dir, sanity_filename))
 } else {message("\t Loading cached sanity-df")
-  sanity_df <- readRDS(file.path(out_dir, "sanity-df.rds"))
+  sanity_df <- readRDS(file.path(out_dir, sanity_filename))
 }
 
 ok_sanity <- sanity_df |> filter(all_ok == TRUE)
 
 # Only predict and get index for fits that passed a sanity check
 ok_fits <- fits[ok_sanity$fname]
-
-no_wchg <- ok_fits[!grepl('WCHG', names(ok_fits))]
 
 predictions <- purrr::map(ok_fits, \(x) {
   region <- unique(x$data$survey_abbrev)
@@ -209,31 +167,44 @@ predictions <- purrr::map(ok_fits, \(x) {
   predict(x, newdata = nd, return_tmb_object = TRUE)
 })
 
-inds <- purrr::map(predictions, get_index, bias_correct = TRUE) |>
-  purrr::map2(.x = _, .y = names(inds), ~ mutate(.x, fname = .y)) |>
-  bind_rows() |>
-  left_join(select(lu_df, .species, .region, .family)) |>
+tictoc::tic()
+inds3 <- purrr::map(predictions[301:472], get_index, bias_correct = TRUE) |>
+  purrr::map2(.x = _, .y = names(predictions[301:472]), ~ mutate(.x, fname = .y)) |>
+  bind_rows() #|>
+tictoc::toc()
+  left_join(lu_df) |>
   select(-fname)
-saveRDS(inds, file.path(out_dir, "index-df.rds"))
 
-fit_ests <- purrr::map(ok_fits, get_fitted_estimates, real_data = TRUE) |>
-  purrr::map2(.x = _, .y = names(ok_fits), ~ mutate(.x, fname = .y)) |>
+index_filename <- paste0("index-df", tag, ".rds")
+bind_rows(inds, inds2, inds3) |>
+saveRDS(file.path(out_dir, index_filename))
+
+fit_est_filename <- paste0("fitted-estimates", tag, ".rds")
+fit_ests <- purrr::map(fits, get_fitted_estimates, real_data = TRUE) |>
+  purrr::keep(is.data.frame) |>
+  purrr::imap(~ mutate(.x, fname = .y)) |>
   bind_rows() |>
   left_join(lu_df) |>
   select(-fname)
 beep()
-saveRDS(fit_ests, file.path(out_dir, "fitted-estimates-df.rds"))
+saveRDS(fit_ests, file.path(out_dir, fit_est_filename))
 
-gg_fits <- fits[grepl('gengamma', names(fits))] |>
-  purrr::keep(~ inherits(.x, 'sdmTMB'))
-gg_fit_ests <- gg_fits|>
-  purrr::map(get_fitted_estimates, real_data = TRUE) |>
-  purrr::map2(.x = _, .y = names(gg_fits), ~ mutate(.x, fname = .y)) |>
-  bind_rows() |>
-  left_join(lu_df) |>
-  select(-fname)
-beep()
-saveRDS(gg_fit_ests, file.path(out_dir, "gengamma-all-fitted-estimates-df.rds"))
+
+test <- left_join(fit_ests, sanity_df)
+
+test |> filter(all_ok == FALSE) |>
+  View()
+
+# gg_fits <- ok_fits[grepl('gengamma', names(ok_fits))] |>
+#   purrr::keep(~ inherits(.x, 'sdmTMB'))
+# gg_fit_ests <- gg_fits|>
+#   purrr::map(get_fitted_estimates, real_data = TRUE) |>
+#   purrr::map2(.x = _, .y = names(gg_fits), ~ mutate(.x, fname = .y)) |>
+#   bind_rows() |>
+#   left_join(lu_df) |>
+#   select(-fname)
+# beep()
+# saveRDS(gg_fit_ests, file.path(out_dir, "gengamma-all-fitted-estimates-df.rds"))
 
 gg_fit_ests
 
@@ -265,7 +236,6 @@ g <- sp_fits |> purrr::map(~ .x$gradients)
 
 
 sp_fits[["north-pacific-spiny-dogfish-SYN WCVI-delta-gengamma"]] |> names()
-sanity()
 
 rqr_df <- purrr::map_dfr(1:length(sp_fits), ~ get_rqr(sp_fits[[.x]], id = names(sp_fits[.x])))
 
@@ -281,7 +251,7 @@ ggplot(aes(sample = r)) +
   geom_abline(intercept = 0, slope = 1) +
   facet_grid(region ~ family)
   #facet_wrap(~ family)
-
+ggsave(filename = file.path('figures', 'bc-gf-data', 'exploratory', 'dogfish-rqr.png'))
 
 
 # Splitting the capture groups into separate columns
