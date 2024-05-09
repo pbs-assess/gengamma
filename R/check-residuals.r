@@ -1,16 +1,16 @@
-#library(sdmTMB)
-devtools::load_all('../sdmTMB') # add-gengamma-rqr branch
+# library(sdmTMB)
+devtools::load_all("../sdmTMB") # add-gengamma-rqr branch
 library(dplyr)
 library(ggplot2)
 theme_set(theme_light())
 
-source(here::here('R', '00-utils.R'))
+source(here::here("R", "00-utils.R"))
 
 # ------------
-#fits <- readRDS(here::here('data-outputs', 'fits', '42-cv0.8-sigmao0-b0-n1000.rds'))
-fits <- readRDS(here::here('data-outputs', 'cross-sim', 'fits', '42-cv0.95-sigmao1-b0-n1000-poisson-link.rds'))
+# fits <- readRDS(here::here('data-outputs', 'fits', '42-cv0.8-sigmao0-b0-n1000.rds'))
+fits <- readRDS(here::here("data-outputs", "cross-sim", "fits", "42-cv0.95-sigmao1-b0-n1000-poisson-link.rds"))
 
-sanity_df <- purrr::map_dfr(fits, ~get_sanity_df(.x, silent = TRUE))
+sanity_df <- purrr::map_dfr(fits, ~ get_sanity_df(.x, silent = TRUE))
 
 fit_df <- purrr::map_dfr(fits, get_fitted_estimates) |>
   mutate(id = row_number()) |>
@@ -20,7 +20,7 @@ fit_df <- purrr::map_dfr(fits, get_fitted_estimates) |>
 title_levels <- c(unique(fit_df$title)[-1], "delta-gamma")
 
 idx <- fit_df |>
-  #filter(sim_family == "delta-gengamma", Q == -2, fit_family == "gengamma") |>
+  # filter(sim_family == "delta-gengamma", Q == -2, fit_family == "gengamma") |>
   filter(is.na(Q) | !(Q %in% c(-5, 5))) |>
   pull(id)
 
@@ -61,8 +61,8 @@ left_join(dr_df, fit_df) |>
   plot_resid()
 
 left_join(dr_df, fit_df) |>
-  filter(title == 'delta-gengamma: Q=0.8') |>
-plot_resid()
+  filter(title == "delta-gengamma: Q=0.8") |>
+  plot_resid()
 
 # dr_df_mleeb <- purrr::map_dfr(fit_df$id[fit_df$sanity_allok], ~ get_dr(fits[[.x]], .x, seed = 100, nsim = 200, type = 'mle-eb')) |>
 #   tibble::as_tibble()
