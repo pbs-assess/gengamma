@@ -1,6 +1,6 @@
 library(dplyr)
-library(sdmTMB)
-#devtools::load_all('../sdmTMB') # gengamma RQR branch - not needed for dogfish test fitting
+#library(sdmTMB)
+devtools::load_all('../sdmTMB') # gengamma RQR branch - not needed for dogfish test fitting
 library(ggplot2)
 theme_set(gfplot::theme_pbs())
 
@@ -23,14 +23,46 @@ mesh <- make_mesh(test_dat, xy_cols = c('X', 'Y'), cutoff = 8)
 # catch_weight * 1e-2 works for spatial = 'on', spatiotemporal = 'iid'
 # Also works without scaling and spatial = 'off', spatiotemporal = 'off'
 
-test_fit <- sdmTMB(data = test_dat, #|> mutate(catch_weight = catch_weight * 1e-2),
+fit1 <- sdmTMB(data = test_dat, #|> mutate(catch_weight = catch_weight * 1e-2),
   formula = as.formula(catch_weight ~ 0 + as.factor(year)),
   mesh = mesh,
   offset = "offset",
   spatial = 'on',
-  spatiotemporal = 'iid',
-  time = 'year'
+  spatiotemporal = 'off',
+  time = 'year',
+  family = sdmTMB::delta_gengamma()
 )
+
+# make catch weight slightly smaller; converges:
+fit2 <- update(fit1, data = test_dat |> mutate(catch_weight = catch_weight * 0.15))
+
+# add light prior on year effects; converges:
+fit3 <- update(fit1, priors = sdmTMBpriors(b = normal(rep(0, 10), rep(10, 10))))
+
+# add light prior on year effects; converges:
+fit3 <- update(
+  fit1,
+  priors = sdmTMBpriors(b = normal(rep(0, 10), rep(100, 10))),
+  data = test_dat
+)
+
+fit4 <- update(
+  fit1,
+  control = sdmTMBcontrol(profile = TRUE),
+  data = test_dat
+)
+
+my local version only, this works too:
+# move gengamma_Q only to inner optimization; converges:
+PROFILE <- "gengamma_Q"
+fit5 <- update(
+  fit1,
+  control = sdmTMBcontrol(profile = TRUE),
+  data = test_dat
+)
+
+p <- get_pars(fit5)
+p$gengamma_Q
 
 # ----------
 
