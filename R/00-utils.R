@@ -37,7 +37,7 @@ get_phi <- function(cv, family, mu, p, Q) {
     print(sigma)
     set.seed(1)
     x <- rgengamma(3e6, mean = mu, sigma = sigma, Q = q)
-    cv <- sd(x)/mean(x)
+    cv <- sd(x) / mean(x)
     (cv - desired_cv)^2
   }
 
@@ -45,7 +45,7 @@ get_phi <- function(cv, family, mu, p, Q) {
     print(sigma)
     set.seed(1)
     x <- rgengamma(3e6, mean = mu, sigma = sigma, Q = sigma)
-    cv <- sd(x)/mean(x)
+    cv <- sd(x) / mean(x)
     (cv - desired_cv)^2
   }
 
@@ -195,6 +195,8 @@ get_fitted_estimates <- function(fit_obj, real_data = FALSE) {
         Q = unique(fit_obj$data$Q),
         est_Q = gg_Q,
         est_Qse = gg_Q_se,
+        spatial = unique(fit_obj$spatial),
+        spatiotemporal = unique(fit_obj$spatiotemporal),
         type = type
       )
     } else {
