@@ -178,7 +178,7 @@ sim_fit <- function(predictor_dat, mesh_sim,
   fits <- keep(fits, ~inherits(.x, "sdmTMB"))
 
   if (save_fits) {
-    fits_filename <- paste0(rep, '-cv', cv, '-sigmao', sigma_O, '-b', b0, '-n', sample_size, '.rds')
+    fits_filename <- paste0(rep, '-cv', cv, '-sigmao', sigma_O, '-b', b0, '-n', sample_size, type, '.rds')
     message("\tSaving: ", file.path(fit_dir, fits_filename))
     saveRDS(fits, file.path(fit_dir, fits_filename))
     if (fits_only) {
@@ -195,7 +195,8 @@ sim_fit <- function(predictor_dat, mesh_sim,
       #fit_family1 = family(x)[[1]][[1]],
       fit_family = ifelse(family(x)[[1]][[1]] == 'tweedie', 'tweedie', family(x)[[2]][[1]]),
       Q = unique(x$data$Q),
-      sanity_allok = sanity(x)$all_ok)
+      sanity_allok = sanity(x)$all_ok
+      )
     )
 
   # Only get predictions for cases where sanity checks passed
@@ -217,53 +218,54 @@ n_year = 1
 grid_width = 100
 set.seed = 42
 predictor_dat <- tidyr::expand_grid(
-    X = seq(0, 1, length.out = grid_width), Y = seq(0, 1, length.out = grid_width),
-    year = seq_len(n_year)
-  )
+  X = seq(0, 1, length.out = grid_width), Y = seq(0, 1, length.out = grid_width),
+  year = seq_len(n_year)
+)
 
 mesh_sim <- make_mesh(predictor_dat, xy_cols = c("X", "Y"), cutoff = 0.1)
 
 # Observation error scale parameter (e.g., SD in Gaussian).
 #cv_values <- c(0.2, 0.5, 0.8)
-cv <- c(0.8, 0.95)[1] # lingcod wcvi cv ~0.83; dogfish wcvi gamma cv ~0.95
+cv <- c(0.8, 0.95)[2] # lingcod wcvi cv ~0.83; dogfish wcvi gamma cv ~0.95
 b0 <- 0
-sigma_O <- c(0.2, 0.6, 1.0, 1.75, 3.2)[2] #dogfish wcvi gamma ~1.0
+sigma_O <- c(0.2, 0.6, 1.0, 1.75, 3.2)[3] #dogfish wcvi gamma ~1.0
 tweedie_p <- 1.5
-
 # Define the values of Q
-# .gamma_q <- get_phi(family = 'gengamma-gamma-case', cv = cv, mu = 1)
-# Q_values <- c(-5, -2, -1, -0.5, -0.001, 0.001, 0.5, round(.gamma_q, digits = 3), 1, 2, 5)
+# gamma_q_df <- crossing(.cv = c(0.8, 0.95, 1.5), .b0 = c(0, 1)) |>
+#   rowwise() |>
+#   mutate(phi = get_phi(family = 'gengamma-gamma-case', cv = .cv, mu = exp(.b0)))
 
-if (!file.exists(file.path(out_dir, 'Q-values.txt'))) {
-  Q_values <- c(-5, -2, -1, -0.5, -0.001, 0.001, 0.5, 0.8, 1, 2, 5) # Hard code .gamma_q for now
-  dput(Q_values, file.path(out_dir, 'Q-values.txt'))
-} else {
-  Q_values <- dget(file.path(out_dir, 'Q-values.txt'))
-}
+# CV is supposed to be invariant of the mean for the gengamma
+# And trials of the above shows that when sigma = Q (i.e., the gamma case), the
+# necessary phi seems to be almost exactly the cv.
+Q_values <- c(-2, -1, -0.5, -0.001, 0.001, 0.5, cv, 1, 2)
 
-if (!file.exists(file.path(out_dir, 'gengamma-phi.txt'))) {
+# if (!file.exists(file.path(out_dir, 'Q-values.txt'))) {
+#   Q_values <- c(-2, -1, -0.5, -0.001, 0.001, 0.5, 0.8, 1, 2) # Hard code .gamma_q for now
+#   dput(Q_values, file.path(out_dir, 'Q-values.txt'))
+# } else {
+#   Q_values <- dget(file.path(out_dir, 'Q-values.txt'))
+# }
+#Q_omit <- (Q_values %in% c(-5, 5))
+#Q_values <- Q_values[!Q_omit]
+
+if (!file.exists(file.path(out_dir, paste0("gengamma-phi-", cv, ".txt")))) {
   gengamma_phi <- map_dbl(Q_values, ~ get_phi(family = 'gengamma', cv = cv, mu = 1, Q = .x))
-  dput(round(gengamma_phi, 5), file.path(out_dir, 'gengamma-phi.txt'))
+  dput(round(gengamma_phi, 5), file.path(out_dir, paste0("gengamma-phi-", cv, ".txt")))
 } else {
-  gengamma_phi <- dget(file.path(out_dir, 'gengamma-phi.txt'))
+  gengamma_phi <- dget(file.path(out_dir, paste0("gengamma-phi-", cv, ".txt")))
 }
+# gengamma_phi <- gengamma_phi[!Q_omit]
+
 # Save one run of simulated data objects for benchmarking
 # set.seed(42)
 # sim_list <- sim_fit(rep = 1,
-  # predictor_dat = predictor_dat, mesh_sim = mesh_sim,
-  # cv = cv, b0 = b0, sigma_O = sigma_O, tweedie_p = tweedie_p,
-  # Q_values = Q_values, gengamma_phi = gengamma_phi,
-  # get_simulation_output = TRUE)
+#   predictor_dat = predictor_dat, mesh_sim = mesh_sim,
+#   cv = cv, b0 = b0, sigma_O = sigma_O, tweedie_p = tweedie_p,
+#   Q_values = Q_values, gengamma_phi = gengamma_phi,
+#   get_simulation_output = TRUE)
 # saveRDS(sim_list, file.path(out_dir, 'sim-list.rds'))
 
-set.seed(42)
-fit <- sim_fit(rep = 42,
-  predictor_dat = predictor_dat, mesh_sim = mesh_sim,
-  cv = 0.95, b0 = 0, sigma_O = 1, tweedie_p = tweedie_p,
-  Q_values = Q_values, gengamma_phi = gengamma_phi,
-  sp = "off", sample_size = 1000,
-  save_fits = TRUE, fits_only = TRUE)
-beep()
 # ------------------------------------------------------------------------------
 # Cross-simulation
 # ------------------------------------------------------------------------------
@@ -285,9 +287,9 @@ cores <- parallel::detectCores()
 # -------------------------------
 # Use version with progress bar
 # -------------------------------
-cv <- c(0.8, 0.95)[1] # lingcod wcvi cv ~0.83; dogfish wcvi gamma cv ~0.95
+cv <- c(0.8, 0.95)[2] # lingcod wcvi cv ~0.83; dogfish wcvi gamma cv ~0.95
 b0 <- 0
-sigma_O <- c(0.2, 0.6, 1.0, 1.75)[2] #dogfish wcvi gamma ~1.0
+sigma_O <- c(0.2, 0.6, 1.0, 1.75)[3] #dogfish wcvi gamma ~1.0
 tweedie_p <- 1.5
 type <- ""
 #type <- "-poisson-link"
@@ -303,7 +305,8 @@ prog_fxn <- function(xs) {
     sim_fit(rep = x,
            predictor_dat = predictor_dat, mesh_sim = mesh_sim,
            cv = cv, b0 = b0, sigma_O = sigma_O, tweedie_p = tweedie_p,
-           Q_values = Q_values, gengamma_phi = gengamma_phi)
+           Q_values = Q_values, gengamma_phi = gengamma_phi,
+           type = type)
   })
 }
 
@@ -329,6 +332,20 @@ if (!file.exists(file.path(ind_dir, paste0(tag, '.rds')))) {
   fit_summary <- readRDS(file.path(fit_sum_dir, paste0(tag, '.rds'))) |> as_tibble()
 }
 beep()
+
+# Get fits for RQR
+# -------------------------------
+# Used high sample size to check RQR were working for the given distributions
+# Need to make sure that spatial = "on" if sigma > 0, and it isn't really any slower
+seed <- 37
+set.seed(seed)
+fit <- sim_fit(rep = seed,
+  predictor_dat = predictor_dat, mesh_sim = mesh_sim,
+  cv = cv, b0 = b0, sigma_O = 1.0, tweedie_p = tweedie_p,
+  Q_values = Q_values, gengamma_phi = gengamma_phi,
+  type = "",
+  sp = "on", sample_size = 1000,
+  save_fits = TRUE, fits_only = TRUE)
 # -------------------------------
 
 # Self check on gg Q estimation
