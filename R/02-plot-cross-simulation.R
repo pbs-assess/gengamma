@@ -225,8 +225,6 @@ ggsave(filename = file.path(fig_dir, paste0("aic_weight-sanity", tag, ".png")), 
 # Residuals
 # ------------------------------------------------------------------------------
 fits <- readRDS(here::here("data-outputs", "cross-sim", "fits", "37-cv0.95-sigmao1-b0-n1000.rds"))
-
-
 sanity_df <- purrr::map_dfr(fits, ~ get_sanity_df(.x, silent = TRUE))
 
 fit_df <- purrr::map_dfr(fits, get_fitted_estimates) |>
@@ -236,29 +234,39 @@ fit_df <- purrr::map_dfr(fits, get_fitted_estimates) |>
   left_join(sanity_df)
 title_levels <- c(unique(fit_df$title)[-1], "delta-gamma")
 
+# In case we want to filter things
 idx <- fit_df |>
   # filter(sim_family == "delta-gengamma", Q == -2, fit_family == "gengamma") |>
-  filter(is.na(Q) | !(Q %in% c(-5, 5))) |>
   pull(id)
 
 # RQR
 # ------------------
 rqr_df <- purrr::map_dfr(idx, ~ get_rqr(fits[[.x]], id = .x)) |>
-  left_join(fit_df)
+  left_join(fit_df) |>
+  # filter(id %in% idx) |>
+  filter(sanity_allok == TRUE) |>
+  mutate(title = gsub("delta-", "", title)) |>
+  mutate(title = gsub("gengamma", "gg", title)) |>
+  mutate(title = gsub("-poisson-link", "", title))
+rqr_title_levels <- unique(rqr_df$title)
+rqr_title_levels <- c(rqr_title_levels[-1], rqr_title_levels[1])
 
 # Check gengamma rqr
 # idx <- fit_df |>
 #   filter(sim_family == "delta-gengamma", fit_family == "gengamma", sanity_allok == TRUE) |>
 #   pull(id)
-
-rqr_df |>
-  # filter(id %in% idx) |>
-  filter(sanity_allok == TRUE) |>
-  mutate(title = factor(title, levels = title_levels)) |>
+rqr_plot <- rqr_df |>
+  mutate(title = factor(title, levels = rqr_title_levels)) |>
+  relevel_fit_family() |>
   ggplot(aes(sample = r)) +
   geom_qq() +
   geom_abline(intercept = 0, slope = 1) +
   facet_grid(fit_family ~ title)
+rqr_plot
+
+ggsave(rqr_plot, filename = file.path(fig_dir, paste0("rqr-", family(fits[[1]])$type, ".png")),
+  width = 15, height = 7
+)
 
 # DHARMa residuals
 # ------------------
