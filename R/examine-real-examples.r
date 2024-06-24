@@ -1,6 +1,6 @@
 library(dplyr)
-# library(sdmTMB)
-devtools::load_all("../sdmTMB") # gengamma RQR branch - not needed for dogfish test fitting
+library(sdmTMB)
+#devtools::load_all("../sdmTMB") # gengamma RQR branch - not needed for dogfish test fitting
 library(ggplot2)
 theme_set(gfplot::theme_pbs())
 

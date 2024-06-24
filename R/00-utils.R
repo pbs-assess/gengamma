@@ -4,7 +4,7 @@ rgengamma <- function(n, mean, sigma, Q) {
   y <- numeric(n)
 
   if (any(ind0)) {
-    message('Q == 0, using rlnorm')
+    message("Q == 0, using rlnorm")
     y[ind0] <- rlnorm(n, mean, sigma)
   }
 
@@ -12,7 +12,7 @@ rgengamma <- function(n, mean, sigma, Q) {
     # Get mu from mean
     k <- lambda^-2
     beta <- lambda / sigma
-    log_theta <- log(mean) - lgamma( (k*beta+1)/beta ) + lgamma( k )
+    log_theta <- log(mean) - lgamma((k * beta + 1) / beta) + lgamma(k)
     mu <- log_theta + log(k) / beta
     w <- log(lambda^2 * rgamma(n, 1 / lambda^(2), 1)) / lambda
     y[!ind0] <- exp(mu + (sigma * w))
@@ -55,29 +55,29 @@ get_phi <- function(cv, family, mu, p, Q) {
     "tweedie" = ((mu * cv)^2) / (mu^p),
     "gengamma" = optimize(f, c(0.0001, 3), tol = 0.00001, desired_cv = cv, q = Q)$minimum,
     "gengamma-gamma-case" = optimize(f2, c(0.0001, 3), tol = 0.00001, desired_cv = cv)$minimum
-    )
+  )
 }
 
 choose_family <- function(fit_fam) {
   switch(fit_fam,
-      "lognormal" = sdmTMB::lognormal(link = "log"),
-      "gamma" = Gamma(link = "log"),
-      "gengamma" = sdmTMB::gengamma(link = "log"),
-      "delta-gamma" = sdmTMB::delta_gamma(link2 = "log", type = "standard"),
-      "delta-lognormal" = sdmTMB::delta_lognormal(link2 = "log", type = "standard"),
-      "delta-gengamma" = sdmTMB::delta_gengamma(link2 = "log", type = "standard"),
-      "delta-gamma-poisson-link" = sdmTMB::delta_gamma(link2 = "log", type = "poisson-link"),
-      "delta-lognormal-poisson-link" = sdmTMB::delta_lognormal(link2 = "log", type = "poisson-link"),
-      "delta-gengamma-poisson-link" = sdmTMB::delta_gengamma(link2 = "log", type = "poisson-link"),
-      "tweedie" = sdmTMB::tweedie(link = "log"),
-      # Add more cases for other families if needed
-      stop("Invalid family name")
+    "lognormal" = sdmTMB::lognormal(link = "log"),
+    "gamma" = Gamma(link = "log"),
+    "gengamma" = sdmTMB::gengamma(link = "log"),
+    "delta-gamma" = sdmTMB::delta_gamma(link2 = "log", type = "standard"),
+    "delta-lognormal" = sdmTMB::delta_lognormal(link2 = "log", type = "standard"),
+    "delta-gengamma" = sdmTMB::delta_gengamma(link2 = "log", type = "standard"),
+    "delta-gamma-poisson-link" = sdmTMB::delta_gamma(link2 = "log", type = "poisson-link"),
+    "delta-lognormal-poisson-link" = sdmTMB::delta_lognormal(link2 = "log", type = "poisson-link"),
+    "delta-gengamma-poisson-link" = sdmTMB::delta_gengamma(link2 = "log", type = "poisson-link"),
+    "tweedie" = sdmTMB::tweedie(link = "log"),
+    # Add more cases for other families if needed
+    stop("Invalid family name")
   )
 }
 
 # Fit real data
 get_fit <- function(survey_dat, formula, region, family, species = NULL,
-                  cutoff = 8, time = "year",
+                   cutoff = 8, time = "year", # nolint
                    sp = "on", st = "iid", offset = "offset",
                    use_priors = FALSE) {
   survey_dat <- filter(survey_dat, survey_abbrev %in% region)
@@ -87,7 +87,7 @@ get_fit <- function(survey_dat, formula, region, family, species = NULL,
   } else {
     survey_dat <- filter(survey_dat, species == {{species}})
   }
-  mesh <- make_mesh(survey_dat, xy_cols = c("X", "Y"), cutoff = cutoff)
+  mesh <- sdmTMB::make_mesh(survey_dat, xy_cols = c("X", "Y"), cutoff = cutoff)
 
   ny <- length(unique(survey_dat$year))
 
@@ -98,7 +98,7 @@ get_fit <- function(survey_dat, formula, region, family, species = NULL,
   }
 
   fit <- tryCatch(
-    sdmTMB(
+    sdmTMB::sdmTMB(
       formula = formula,
       data = survey_dat,
       mesh = mesh,
@@ -107,14 +107,14 @@ get_fit <- function(survey_dat, formula, region, family, species = NULL,
       spatiotemporal = st,
       offset = "offset",
       family = choose_family(family),
-      priors = sdmTMBpriors(b = b_priors)
+      priors = sdmTMB::sdmTMBpriors(b = b_priors)
     ),
     error = function(e) paste(species, region, family, "\n\tError:", e, sep = " - ")
   )
 
-  if (inherits(fit, 'sdmTMB')) {
-    sanity_check <- all(unlist(sdmTMB::sanity(fit, gradient_thresh = 0.005)))
-  }
+  # if (inherits(fit, 'sdmTMB')) {
+  #   sanity_check <- all(unlist(sdmTMB::sanity(fit, gradient_thresh = 0.005)))
+  # }
   # Turn off spatial field if model does not fit and spatiotemporal == "off"
   # if ((!inherits(fit, 'sdmTMB') | !sanity_check) & (sp == "on" & st == "off")) {
   #   message("\tFitting: sp = ", sp, ", st = ", st, " for ", species, "-", region, "-", family, " failed")
@@ -129,7 +129,7 @@ get_fit <- function(survey_dat, formula, region, family, species = NULL,
 
 # Fit models across families
 fit_cross <- function(.data, .mesh, sim_fam, .Q = NA, fit_fam,
-  sp = "on", st = "off") {
+                     sp = "on", st = "off") {
   if (grepl("gengamma", sim_fam)) {
     dat <- .data |> filter(grepl("gengamma", family), Q == .Q)
   } else {
@@ -139,7 +139,7 @@ fit_cross <- function(.data, .mesh, sim_fam, .Q = NA, fit_fam,
   .family <- choose_family(fit_fam)
 
   message("\tFitting data simulated from: ", sim_fam, " with - ", fit_fam)
-  sdmTMB(formula = observed ~ 1,
+  sdmTMB::sdmTMB(formula = observed ~ 1,
     data = dat,
     mesh = .mesh,
     family = .family,
@@ -151,13 +151,13 @@ fit_cross <- function(.data, .mesh, sim_fam, .Q = NA, fit_fam,
 get_sanity_df <- function(fit_obj, real_data = FALSE, silent = FALSE, .gradient_thresh = 0.001) {
   type <- family(fit_obj)$type
   if (!real_data) {
-  out <- tibble(
-    sim_family = unique(fit_obj$data$family),
-    fit_family = ifelse(family(fit_obj)[[1]][[1]] == 'tweedie', 'tweedie', family(fit_obj)[[2]][[1]]),
-    Q = unique(fit_obj$data$Q),
-    sanity_allok = sanity(fit_obj, silent = silent, gradient_thresh = .gradient_thresh)$all_ok,
-    gradient_thresh = .gradient_thresh,
-    type = type
+    out <- tibble(
+      sim_family = unique(fit_obj$data$family),
+      fit_family = ifelse(family(fit_obj)[[1]][[1]] == 'tweedie', 'tweedie', family(fit_obj)[[2]][[1]]),
+      Q = unique(fit_obj$data$Q),
+      sanity_allok = sanity(fit_obj, silent = silent, gradient_thresh = .gradient_thresh)$all_ok,
+      gradient_thresh = .gradient_thresh,
+      type = type
     )
   } else {
     out <- tibble(
@@ -165,14 +165,16 @@ get_sanity_df <- function(fit_obj, real_data = FALSE, silent = FALSE, .gradient_
       region = unique(fit_obj$data$survey_abbrev),
       fit_family = ifelse(family(fit_obj)[[1]][[1]] == 'tweedie', 'tweedie', family(fit_obj)[[2]][[1]]),
       gradient_thresh = .gradient_thresh,
-      type = type
-      ) |>
-      bind_cols(tibble::tibble(!!!sanity(fit_obj, silent = silent, gradient_thresh = .gradient_thresh)))
+      type = type,
+      spatial = unique(fit_obj$spatial),
+      spatiotemporal = unique(fit_obj$spatiotemporal)
+    ) |>
+    bind_cols(tibble::tibble(!!!sanity(fit_obj, silent = silent, gradient_thresh = .gradient_thresh)))
   }
 }
 
 get_fitted_estimates <- function(fit_obj, real_data = FALSE) {
-  if (inherits(fit_obj, 'sdmTMB')) {
+  if (inherits(fit_obj, "sdmTMB")) {
     type <- family(fit_obj)$type
 
     sd_rep_est <- as.list(fit_obj$sd_report, what = "Estimate")
@@ -182,10 +184,10 @@ get_fitted_estimates <- function(fit_obj, real_data = FALSE) {
     gg_Q_se <- sd_rep_se$gengamma_Q
 
     family1 <- family(fit_obj)[[1]][[1]]
-    family2 <- ifelse(family1 == 'tweedie', 'tweedie', family(fit_obj)[[2]][[1]])
-    mod <- ifelse(family1 == 'tweedie', 1, 2)
+    family2 <- ifelse(family1 == "tweedie", "tweedie", family(fit_obj)[[2]][[1]])
+    mod <- ifelse(family1 == "tweedie", 1, 2)
 
-    tidy_ran <- tidy(fit_obj, effects = 'ran_pars', model = mod) |>
+    tidy_ran <- tidy(fit_obj, effects = "ran_pars", model = mod) |>
       tidyr::pivot_wider(names_from = term, values_from = c(estimate, std.error))
 
     if (!real_data) {
@@ -200,7 +202,11 @@ get_fitted_estimates <- function(fit_obj, real_data = FALSE) {
         type = type
       )
     } else {
+      region <- unique(fit_obj$data$survey_abbrev)
+      species <- unique(fit_obj$data$species)
       out <- tibble(
+        species = species,
+        region = region,
         fit_family = family2,
         type = type,
         est_Q = gg_Q,
@@ -247,7 +253,7 @@ get_index_summary <- function(predict_obj) {
     # est_sigmaO = est_sigmaO,
     # est_sigmaOse = est_sigmaOse
   ) |>
-  bind_rows()
+    bind_rows()
 }
 
 clean_name <- function(x) gsub("/", "-", gsub(" ", "-", x))
@@ -270,15 +276,15 @@ choose_multi_type <- function(cores = cores) {
 # Residuals
 # ---------------
 get_rqr <- function(fit_obj, id) {
-  m <- if (family(fit_obj)[[1]][1] == 'tweedie') 1 else 2
-  tibble(r = residuals(fit_obj, type = 'mle-mvn', model = m), id = id)
+  m <- if (family(fit_obj)[[1]][1] == "tweedie") 1 else 2
+  tibble(r = residuals(fit_obj, type = "mle-mvn", model = m), id = id)
 }
 
-get_dr <- function(fit_obj, fit_id, nsim = 200, seed = sample.int(1e6, 1), type = 'mle-mvn') {
+get_dr <- function(fit_obj, fit_id, nsim = 200, seed = sample.int(1e6, 1), type = "mle-mvn") {
   set.seed(seed)
   simulate(fit_obj, nsim = nsim, type = type) |>
-  dharma_residuals(fit_obj, plot = FALSE) |>
-  mutate(id = fit_id, seed = seed)
+    dharma_residuals(fit_obj, plot = FALSE) |>
+    mutate(id = fit_id, seed = seed)
 }
 
 plot_resid <- function(resids) {

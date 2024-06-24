@@ -77,8 +77,8 @@ plot_df <- index_df |>
   ungroup(fit_family) |>
   mutate(
     min_aic = min(aic),
-    d_aic = aic - min_aic,
-    rel_lik = exp(-0.5 * d_aic)
+    daic = aic - min_aic,
+    rel_lik = exp(-0.5 * daic)
   ) |>
   mutate(aic_w = rel_lik / sum(rel_lik)) |> # see: https://atsa-es.github.io/atsa-labs/sec-uss-comparing-models-with-aic-and-model-weights.html
   ungroup() |>
@@ -113,6 +113,21 @@ mre <- plot_df |>
   labs(x = "MRE", y = "Fit family") +
   ggtitle(paste0("Mean relative error ", tag))
 ggsave(mre, filename = file.path(fig_dir, paste0("mre", tag, ".png")), width = 11, height = 2.5)
+
+daic <-
+  plot_df |>
+  filter_plot_df() |>
+  ggplot(aes(x = daic + 1, y = fit_family)) +
+  geom_violin(aes(colour = fit_family), scale = "width") +
+  stat_summary(fun = mean, geom = "point", colour = "black") +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  scale_color_brewer(palette = "Dark2") +
+  scale_x_continuous(trans = "log10") +
+  facet_wrap(~title, ncol = 10) +
+  guides(colour = "none") +
+  labs(x = "dAIC + 1", y = "Fit family") +
+  ggtitle(paste0("Delta AIC ", tag))
+daic
 
 aic_weight_hist <-
   plot_df |>

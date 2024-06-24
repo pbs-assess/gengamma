@@ -125,14 +125,18 @@ cutoff <- 8
 regions <- c("SYN WCVI", "SYN QCS", "SYN HS")
 families <- c(
   "tweedie",
-  "delta-gamma", "delta-lognormal", "delta-gengamma"
+  "delta-gamma", "delta-lognormal", "delta-gengamma",
+  "delta-gamma-poisson-link", "delta-lognormal-poisson-link", "delta-gengamma-poisson-link"
 )
 # "delta-plink-lognormal", "delta-plink-gamma", "delta-plink-gengamma")
 family_lu <- c(
   "tweedie" = "tweedie",
   "delta-gamma" = "Gamma",
   "delta-lognormal" = "lognormal",
-  "delta-gengamma" = "gengamma"
+  "delta-gengamma" = "gengamma",
+  "delta-gamma-poisson-link" = "Gamma",
+  "delta-lognormal-poisson-link" = "lognormal",
+  "delta-gengamma-poisson-link" = "gengamma"
 ) %>%
   tibble(.family = names(x = .), fit_family = .)
 tofit <- tidyr::expand_grid(
@@ -182,30 +186,52 @@ progressr::with_progress({
 # ------------------------------------------------------------------------------
 # Examine outputs
 # ------------------------------------------------------------------------------
-f_name <- c(
-  list.files(file.path(out_dir, "fits_sp-off-st-off")),
-  list.files(file.path(out_dir, "fits_sp-on-st-off")),
-  list.files(file.path(out_dir, "fits_sp-on-st-on"))
+f <- c(
+  list.files(file.path(out_dir, "fits_sp-off-st-off"), full.names = TRUE),
+  list.files(file.path(out_dir, "fits_sp-off-st-iid"), full.names = TRUE),
+  list.files(file.path(out_dir, "fits_sp-on-st-off"), full.names = TRUE),
+  list.files(file.path(out_dir, "fits_sp-on-st-iid"), full.names = TRUE)
 )
-f_name <- f_name[!grepl("WCHG", f_name)]
-f <- file.path(fit_dir, f_name)
 
-fits <- lapply(f, readRDS) |>
-  setNames(stringr::str_extract(f_name, ("(.*)\\.rds"), group = 1))
+tag <- "-random-effects-on-and-off"
+fit_est_filename <- paste0("fitted-estimates", tag, ".rds")
+fit_ests <- f |>
+  purrr::map(\(f) {
+    fit <- readRDS(f)
+    get_fitted_estimates(fit, real_data = TRUE)
+  }
+  ) |>
+  purrr::keep(is.data.frame) |>
+  #purrr::imap(~ mutate(.x, fname = .y)) |>
+  bind_rows() |>
+  left_join(lu_df, by = c("species" = ".species", "region" = ".region", "fit_family" = "fit_family"))
 beep()
+saveRDS(fit_ests, file.path(out_dir, fit_est_filename))
 
 # tag
-tag <- "-random-effects-on-and-off"
 sanity_filename <- paste0("sanity-df", tag, ".rds")
 if (!file.exists(file.path(out_dir, sanity_filename))) {
-  sanity_df <- purrr::keep(fits, ~ inherits(.x, "sdmTMB")) |>
-    purrr::map_dfr(get_sanity_df, real_data = TRUE, silent = TRUE, .gradient_thresh = 0.005) |>
+  sanity_df <- f[-741] |>
+    purrr::map(\(f) {
+      fit <- readRDS(f)
+      if (inherits(fit, "sdmTMB")) {
+        get_sanity_df(fit, real_data = TRUE, silent = TRUE, .gradient_thresh = 0.005)
+      } else {
+        fit
+      }
+    }) |>
+    purrr::keep(~ is.data.frame(.x)) |>
+    bind_rows() |>
     left_join(lu_df, by = c("species" = ".species", "region" = ".region", "fit_family"))
   saveRDS(sanity_df, file.path(out_dir, sanity_filename))
 } else {
   message("\t Loading cached sanity-df")
   sanity_df <- readRDS(file.path(out_dir, sanity_filename))
 }
+beep()
+
+test <- readRDS(f[741])
+test
 
 ok_sanity <- sanity_df |> filter(all_ok == TRUE)
 
@@ -236,15 +262,6 @@ index_filename <- paste0("index-df", tag, ".rds")
 bind_rows(inds, inds2, inds3) |>
   saveRDS(file.path(out_dir, index_filename))
 
-fit_est_filename <- paste0("fitted-estimates", tag, ".rds")
-fit_ests <- purrr::map(fits, get_fitted_estimates, real_data = TRUE) |>
-  purrr::keep(is.data.frame) |>
-  purrr::imap(~ mutate(.x, fname = .y)) |>
-  bind_rows() |>
-  left_join(lu_df) |>
-  select(-fname)
-beep()
-saveRDS(fit_ests, file.path(out_dir, fit_est_filename))
 
 
 test <- left_join(fit_ests, sanity_df)
