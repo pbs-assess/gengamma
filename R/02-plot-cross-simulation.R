@@ -2,18 +2,27 @@ library(dplyr)
 library(ggplot2)
 library(sdmTMB)
 library(patchwork)
+library(ggtext)
 
-theme_set(theme_light(base_size = 11))
+theme_set(
+  theme_light(base_size = 12) +
+    theme(strip.background = element_rect(fill = "grey95"),
+          strip.text = element_text(colour = "black"))
+)
+#theme_set(gfplot::theme_pbs())
 source(here::here("R", "00-utils.R"))
 
-plot_violin <- function(.data, .x, .ncol = NULL) {
+plot_violin <- function(.data, .x, .ncol = NULL,
+  .scale = "area", .adjust = 1,
+  .summary_fun = "mean") {
   ggplot(data = .data, aes(x = {{ .x }}, y = fit_family)) +
-    geom_violin(aes(colour = fit_family)) +
-    stat_summary(fun = mean, geom = "point", colour = "black") +
-    geom_vline(xintercept = 0, linetype = "dashed") +
+    geom_violin(aes(colour = fit_family), scale = .scale, adjust = .adjust, bw = "SJ") +
+    geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50") +
+    stat_summary(fun = .summary_fun, geom = "point", colour = "black") +
     scale_color_brewer(palette = "Dark2") +
     facet_wrap(~title, ncol = .ncol) +
-    guides(colour = "none")
+    guides(colour = "none") +
+    theme(axis.title.y = element_blank())
 }
 
 plot_linedot <- function(.data, .x, .ncol = NULL, xint = 0.95) {
@@ -26,7 +35,7 @@ plot_linedot <- function(.data, .x, .ncol = NULL, xint = 0.95) {
     guides(colour = "none")
 }
 
-relevel_fit_family <- function(df, fam_levels = c("gengamma", "gamma", "tweedie", "lognormal")) {
+relevel_fit_family <- function(df, fam_levels = c("gengamma", "tweedie", "gamma", "lognormal")) {
   df |>
     mutate(fit_family = tolower(fit_family)) |>
     mutate(fit_family = factor(fit_family, fam_levels))
@@ -35,8 +44,11 @@ relevel_fit_family <- function(df, fam_levels = c("gengamma", "gamma", "tweedie"
 filter_plot_df <- function(x, apply_filter = TRUE) {
   if (apply_filter) {
     x <- x |>
-      filter(is.na(Q) | (Q %in% c(NA, -1, -0.5, 0.001, 0.5, 0.8, 1, 2))) |>
-      filter(cv == 0.8, sigma_O == 1)
+      filter(is.na(Q) | (Q %in% c(-1, -0.5, 2)))
+      # filter(is.na(Q) | (Q %in% c(NA, -1, -0.5, 0.001, 0.8, 2))) |>
+      # filter(cv == 0.8, sigma_O == 1)
+      # filter(is.na(Q) | (Q %in% c(-1, -0.5, 0.001, 0.5, 2))) |>
+      # filter(cv == 0.95, sigma_O == 1)
   }
   x
 }
@@ -52,24 +64,30 @@ Q_values <- dget(file.path(out_dir, "Q-values.txt"))
 
 f <- file.path(ind_dir, list.files(ind_dir))
 
-# index_df <- readRDS(file.path(ind_dir, "cv0.8-sigmao1-nreps200.rds"))
-# tag <- ""
+index_df <- readRDS(file.path(ind_dir, "cv0.95-sigmao1-nreps1000.rds"))
+#index_df <- readRDS(file.path(ind_dir, "cv0.95-sigmao1-nreps50.rds"))
+tag <- ""
 
-index_df <- readRDS(file.path(ind_dir, "cv0.8-sigmao1-nreps200-poisson-link.rds"))
-tag <- "-poisson-link"
+# index_df <- readRDS(file.path(ind_dir, "cv0.8-sigmao1-nreps200-poisson-link.rds"))
+# tag <- "-poisson-link"
 
-# index_df <- f[!grepl('poisson-link', f)] |>
-#   purrr::map_dfr(readRDS)
+apply_filter <- TRUE
 
+title_lu <- tibble(
+  title = c("gengamma (Q = -1)", "lognormal (Q = 0)", "gamma (Q = phi)", "tweedie", "gengamma (Q = 2)"),
+  sim_family = c("delta-gengamma", "delta-lognormal", "delta-gamma", "tweedie", "delta-gengamma"),
+  Q = c(-1, NA, NA, NA, 2)
+)
+
+# Prepare full plotting df
 plot_df <- index_df |>
-  group_by(rep, cv, sim_family, fit_family, Q, `_sdmTMB_time`) |>
+  group_by(rep, cv, sim_family, fit_family, Q, `_sdmTMB_time`) |> # keeping in case we add more time-steps
   mutate(
-    rmse = sqrt(mean((log(est) - log(true))^2)),
-    mre = mean((est - true) / true),
+    re = (est - true) / true, # this is just relative error since we only have one time step
     lwr_ci_50 = exp(log_est + se * qnorm(0.25)),
     upr_ci_50 = exp(log_est + se * qnorm(0.75)),
     covered_50 = lwr_ci_50 < true & upr_ci_50 > true,
-    covered = lwr < true & upr > true,
+    covered = lwr < true & upr > true, # coverage is going to reflect the bias observed in the relative error
     ci_width = upr - lwr,
     ci_width_50 = upr_ci_50 - lwr_ci_50,
     title = ifelse(is.na(Q), sim_family, paste0(sim_family, ": Q=", signif(Q, digits = 2)))
@@ -93,45 +111,100 @@ plot_df <- plot_df |>
   mutate(xtitle = paste0("cv = ", cv, "\nsigma_O = ", sigma_O)) |>
   relevel_fit_family()
 
+# Residuals
+# ----------
+rqr_df <- readRDS(file.path(here::here("data-outputs", "cross-sim", "rqr-101-cv0.95-sigmao1-b0-n2000.rds")))
 
+rqr_df <- rqr_df |>
+  filter(sanity_allok == TRUE) |>
+  mutate(title = gsub("delta-", "", title)) |>
+  mutate(title = gsub("gengamma", "gg", title)) |>
+  mutate(title = gsub("-poisson-link", "", title)) |>
+  relevel_fit_family()
+rqr_title_levels <- unique(rqr_df$title)
+rqr_title_levels <- c(rqr_title_levels[-1], rqr_title_levels[1])
+
+# ------------------
+# Main text figures
+# ------------------
+main_text_df <-
+  plot_df |>
+  select(-title) |>
+  left_join(title_lu) |>
+  filter(!is.na(title)) |>
+  mutate(title = factor(title, levels = title_lu$title))
+
+# Relative error
+re <- main_text_df |>
+  plot_violin(.x = re, .ncol = 5, .summary_fun = "median") +
+  scale_x_continuous(limits = c(-0.25, 1.25), breaks = c(0, 0.5, 1), labels = c(0, 0.5, 1)) +
+  labs(x = "RE", y = "Fit family") +
+  ggtitle(paste0("(a) Relative error ", tag))+
+  theme(plot.title = element_text(hjust = -0.05))
+
+# AIC weights
+aic_weight <- main_text_df |>
+  filter_plot_df(apply_filter = apply_filter) |>
+  plot_violin(.x = aic_w, .ncol = 5,
+    .scale = "width",
+    .summary_fun = "median") +
+  scale_x_continuous(breaks = c(0, 0.25, 0.5, 0.75, 1), labels = c(0, 0.25, 0.5, 0.75, 1)) +
+  labs(x = "Weight (%)", y = "Fit family") +
+  ggtitle(paste0("(b) AIC weight ", tag)) +
+  theme(plot.title = element_text(hjust = -0.05))
+
+(re / aic_weight)
+ggsave(width = 8, height = 6, filename = file.path(fig_dir, "../figure-3-cross-sim-RE-AIC-weight.png"))
+
+# QQ plot
+rqr_plot <- rqr_df |>
+  select(-title) |>
+  left_join(title_lu) |>
+  filter(!is.na(title)) |>
+  mutate(title = factor(title, levels = title_lu$title)) |>
+  ggplot(aes(sample = r)) +
+  geom_qq() +
+  geom_abline(intercept = 0, slope = 1) +
+  facet_grid(fit_family ~ title, scales = "free", switch = "y") +
+  scale_y_continuous(breaks = seq(-6, 6, by = 2), labels = seq(-6, 6, by = 2), position = "right") +
+  labs(x = "Theoretical", y = "Sample")
+
+rqr_plot
+ggsave(width = 7.5, height = 7.5, filename = file.path(fig_dir, "../figure-2-cross-sim-qq.png"))
+
+# ggsave(rqr_plot, filename = file.path(fig_dir, paste0("rqr-", family(fits[[1]])$type, ".png")),
+#   width = 15, height = 7
+# )
+
+
+# ------
+
+# Full data / old
 # - Compare: RMSE, MRE, coverage, AIC
 # - look at the consequence of selecting the wrong family (what does AIC choose)
 # - examine bias in estimates and how the above relates to the Q value
 # - histogram is an option like Figure 5 in Thorson et al 2021 - surprising scale)
 
-rmse <- plot_df |>
-  filter_plot_df() |>
-  plot_violin(.x = rmse, .ncol = 10) +
-  labs(x = "RMSE", y = "Fit family") +
-  ggtitle(paste0("Root mean square error ", tag))
-ggsave(rmse, filename = file.path(fig_dir, paste0("rmse", tag, ".png")), width = 11, height = 2.5)
+# rmse <- plot_df |>
+#   filter_plot_df(apply_filter = apply_filter) |>
+#   plot_violin(.x = rmse, .ncol = 10) +
+#   scale_x_continuous(trans = "log10") +
+#   labs(x = "RMSE", y = "Fit family") +
+#   ggtitle(paste0("Root mean square error ", tag))
+# ggsave(rmse, filename = file.path(fig_dir, paste0("rmse", tag, ".png")), width = 11, height = 2.5)
 
-
-mre <- plot_df |>
-  filter_plot_df() |>
-  plot_violin(.x = mre, .ncol = 10) +
-  labs(x = "MRE", y = "Fit family") +
-  ggtitle(paste0("Mean relative error ", tag))
-ggsave(mre, filename = file.path(fig_dir, paste0("mre", tag, ".png")), width = 11, height = 2.5)
-
-daic <-
-  plot_df |>
-  filter_plot_df() |>
-  ggplot(aes(x = daic + 1, y = fit_family)) +
-  geom_violin(aes(colour = fit_family), scale = "width") +
-  stat_summary(fun = mean, geom = "point", colour = "black") +
-  geom_vline(xintercept = 0, linetype = "dashed") +
-  scale_color_brewer(palette = "Dark2") +
-  scale_x_continuous(trans = "log10") +
-  facet_wrap(~title, ncol = 10) +
-  guides(colour = "none") +
-  labs(x = "dAIC + 1", y = "Fit family") +
-  ggtitle(paste0("Delta AIC ", tag))
-daic
+re <- plot_df |>
+  filter_plot_df(apply_filter = apply_filter) |>
+  plot_violin(.x = re, .ncol = 10) +
+  labs(x = "Relative error", y = "Fit family") +
+  lims(x = c(-0.255, 0.7)) +
+  ggtitle(paste0("Relative error ", tag))
+re
+ggsave(re, filename = file.path(fig_dir, paste0("re", tag, ".png")), width = 11, height = 2.5)
 
 aic_weight_hist <-
   plot_df |>
-  filter_plot_df() |>
+  filter_plot_df(apply_filter = apply_filter) |>
   ggplot() +
   geom_histogram(aes(x = aic_w)) +
   scale_x_continuous(labels = scales::label_percent(suffix = "")) +
@@ -141,7 +214,7 @@ aic_weight_hist
 
 aic_weight <-
   plot_df |>
-  filter_plot_df() |>
+  filter_plot_df(apply_filter = apply_filter) |>
   ggplot(aes(x = aic_w, y = fit_family)) +
   geom_violin(aes(colour = fit_family), scale = "width") +
   stat_summary(fun = mean, geom = "point", colour = "black") +
@@ -158,7 +231,7 @@ ggsave(filename = file.path(fig_dir, paste0("aic_weight", tag, ".png")), width =
 
 ci_coverage <-
   plot_df |>
-  filter_plot_df() |>
+  filter_plot_df(apply_filter = apply_filter) |>
   group_by(title, fit_family, Q, cv, sigma_O, sim_family) |>
   summarise(
     n_sanity_pass = n(),
@@ -166,6 +239,7 @@ ci_coverage <-
   ) |>
   mutate(xtitle = paste0("cv = ", cv, "\nsigma_O = ", sigma_O)) |>
   plot_linedot(.x = prop_covered, .ncol = 10, xint = 0.5) +
+  scale_x_continuous(labels = scales::label_number(accuracy = 0.1)) +
   # facet_grid(xtitle ~ title) +
   labs(x = "Coverage", y = "Fit family") +
   ggtitle(paste0("50% Confidence interval coverage ", tag))
@@ -173,9 +247,11 @@ ci_coverage
 ggsave(filename = file.path(fig_dir, paste0("ci-coverage", tag, ".png")), width = 11, height = 2.5)
 
 ci_width <-
-  plot_violin(plot_df, .x = ci_width_50, .ncol = 5) +
+  plot_df |>
+  filter_plot_df(apply_filter = apply_filter) |>
+  plot_violin(.x = ci_width_50, .ncol = 10) +
   scale_x_continuous(trans = "log10") +
-  facet_grid(xtitle ~ title) +
+  #facet_grid(xtitle ~ title) +
   labs(x = "CI Width", y = "Fit family") +
   ggtitle(paste0("50% Confidence interval width ", tag))
 ci_width
@@ -226,10 +302,10 @@ sanity_plot
 ggsave(filename = file.path(fig_dir, paste0("sanity-pass", tag, ".png")), width = 11, height = 2.5)
 
 # ONLY RUN WHEN WANT SINGLE.
-rmse / mre
-ggsave(filename = file.path(fig_dir, paste0("rmse-mre", tag, ".png")), width = 11, height = 5)
+rmse / re
+ggsave(filename = file.path(fig_dir, paste0("rmse-re", tag, ".png")), width = 11, height = 5)
 
-ci_coverage / ci_width
+ci_coverage + ci_width + plot_layout(nrow = 2)
 ggsave(filename = file.path(fig_dir, paste0("ci-summ", tag, ".png")), width = 11, height = 5)
 
 aic_weight / sanity_plot
@@ -239,26 +315,9 @@ ggsave(filename = file.path(fig_dir, paste0("aic_weight-sanity", tag, ".png")), 
 # ------------------------------------------------------------------------------
 # Residuals
 # ------------------------------------------------------------------------------
-fits <- readRDS(here::here("data-outputs", "cross-sim", "fits", "37-cv0.95-sigmao1-b0-n1000.rds"))
-sanity_df <- purrr::map_dfr(fits, ~ get_sanity_df(.x, silent = TRUE))
+rqr_df <- readRDS(file.path(here::here("data-outputs", "cross-sim", "rqr-101-cv0.95-sigmao1-b0-n2000.rds")))
 
-fit_df <- purrr::map_dfr(fits, get_fitted_estimates) |>
-  mutate(id = row_number()) |>
-  mutate(title = ifelse(is.na(Q), sim_family, paste0(sim_family, ": Q=", signif(Q, digits = 2)))) |>
-  arrange(sim_family, Q) |>
-  left_join(sanity_df)
-title_levels <- c(unique(fit_df$title)[-1], "delta-gamma")
-
-# In case we want to filter things
-idx <- fit_df |>
-  # filter(sim_family == "delta-gengamma", Q == -2, fit_family == "gengamma") |>
-  pull(id)
-
-# RQR
-# ------------------
-rqr_df <- purrr::map_dfr(idx, ~ get_rqr(fits[[.x]], id = .x)) |>
-  left_join(fit_df) |>
-  # filter(id %in% idx) |>
+rqr_df <- rqr_df |>
   filter(sanity_allok == TRUE) |>
   mutate(title = gsub("delta-", "", title)) |>
   mutate(title = gsub("gengamma", "gg", title)) |>
@@ -325,6 +384,7 @@ mean_ests <- fit_df |>
 # fit_df |>
 mean_ests |>
   filter(sim_family == "delta-gengamma", fit_family == "gengamma") |>
+  filter(!(Q %in% c(-5, 5))) |>
   select(sim_family:est_Qse) |>
   ggplot(aes(x = Q, y = est_Q)) +
   geom_point(aes(y = est_Q + 1.96 * est_Qse), stroke = 3, size = 6, shape = "-", colour = "#2c7bb6", alpha = 1) +

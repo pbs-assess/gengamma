@@ -36,6 +36,9 @@ sim_fit <- function(predictor_dat, mesh_sim,
                     sample_size = 500,
                     rep = NULL, get_simulation_output = FALSE,
                     save_fits = FALSE, fits_only = FALSE) {
+  # Being explicit here so that I don't confuse myself
+  b0_bin <- b0_pos <- b0
+  b0_tw <- log(plogis(b0_bin) * exp(b0))
   # QUESTION: Does the seed need to be the same for the binom_sim component and the positive component?
   # Simulate from binomial
   binom_sim <- sdmTMB_simulate(
@@ -59,7 +62,7 @@ sim_fit <- function(predictor_dat, mesh_sim,
     data = predictor_dat,
     time = "year",
     mesh = mesh_sim,
-    family = Gamma(link = "log"), # Delta families are not supported. Instead, simulate the two component models separately and combine.
+    family = lognormal(link = "log"), # Delta families are not supported. Instead, simulate the two component models separately and combine.
     range = 0.5, # Parameter that controls the decay of spatial correlation. If length 2, the spatial and spatiotemporal ranges will be unique.
     phi = get_phi(family = "lognormal", cv = cv), # Observation error scale parameter (e.g., SD in Gaussian).
     sigma_E = 0, # #sigma_E = 0.1,; SD of spatiotemporal process (Epsilon).
@@ -69,7 +72,7 @@ sim_fit <- function(predictor_dat, mesh_sim,
     # B = c(0.2, -0.4) # B0 = intercept, B1 = a1 slope
   ) |>
     mutate(
-      family = "gamma", link = "log", cv = cv,
+      family = "lognormal", link = "log", cv = cv,
       sigma_O = sigma_O, b0 = b0, Q = NA
     ) |>
     tibble::as_tibble() |>
@@ -86,7 +89,6 @@ sim_fit <- function(predictor_dat, mesh_sim,
   sampled <- sample_n(sim_dat, size = sample_size)
   # QUESTION: How many samples should be drawn?
   # I was looking at coverage from the real surveys which is ~5% of the survey grid / year (I think??)
-  # But I think there are convergence issues with 4000 / 10000 as done here.
   sampled_mesh <- make_mesh(sampled, c("X", "Y"), cutoff = 0.1)
   # plot(sampled_mesh[[1]])
 
@@ -114,16 +116,17 @@ sim_fit <- function(predictor_dat, mesh_sim,
     ) |>
     mutate(observed = encounter_observed * catch_observed)
 
-  # Tweedie
+  # Tweedie:
   # ----------------------------------
+  # SIMULATE{y_i(i,m) = rtweedie(mu_i(i,m), phi(m), tweedie_p);}
   tw_sim <- sampled |>
     mutate(
       family = "tweedie",
-      phi = get_phi(family = "tweedie", cv = cv, p = tweedie_p, mu = exp(b0)), # Fix of tweedie phi for given mu
+      phi = get_phi(family = "tweedie", cv = cv, p = tweedie_p, mu = exp(b0_tw)), # Fix of tweedie phi for given mu
       tweedie_p = tweedie_p,
-      catch_observed = fishMod::rTweedie(n(), mu = mu, phi = phi, p = tweedie_p)
+      catch_observed = fishMod::rTweedie(n(), mu = mu * encounter_mu, phi = phi, p = tweedie_p) #
     ) |>
-    mutate(observed = encounter_observed * catch_observed)
+    mutate(observed = catch_observed) # the tweedie already generates zero observations
 
   # Gengamma
   # ----------------------------------
@@ -203,7 +206,6 @@ sim_fit <- function(predictor_dat, mesh_sim,
   fit_sanity <- map_dfr(fits, \(x)
   tibble(
     sim_family = unique(x$data$family),
-    # fit_family1 = family(x)[[1]][[1]],
     fit_family = ifelse(family(x)[[1]][[1]] == "tweedie", "tweedie", family(x)[[2]][[1]]),
     Q = unique(x$data$Q),
     sanity_allok = sanity(x)$all_ok
@@ -259,8 +261,9 @@ Q_values <- c(-2, -1, -0.5, -0.001, 0.001, 0.5, cv, 1, 2)
 # Q_omit <- (Q_values %in% c(-5, 5))
 # Q_values <- Q_values[!Q_omit]
 
+# mu is the true value in inverse link space; so mu = log(b0) here. I am pretty sure.
 if (!file.exists(file.path(out_dir, paste0("gengamma-phi-", cv, ".txt")))) {
-  gengamma_phi <- map_dbl(Q_values, ~ get_phi(family = "gengamma", cv = cv, mu = 1, Q = .x))
+  gengamma_phi <- map_dbl(Q_values, ~ get_phi(family = "gengamma", cv = cv, mu = log(b0), Q = .x))
   dput(round(gengamma_phi, 5), file.path(out_dir, paste0("gengamma-phi-", cv, ".txt")))
 } else {
   gengamma_phi <- dget(file.path(out_dir, paste0("gengamma-phi-", cv, ".txt")))
@@ -303,7 +306,7 @@ sigma_O <- c(0.2, 0.6, 1.0, 1.75)[3] # dogfish wcvi gamma ~1.0
 tweedie_p <- 1.5
 type <- ""
 # type <- "-poisson-link"
-n_reps <- 200
+n_reps <- 1000
 tag <- paste0("cv", cv, "-sigmao", sigma_O, "-nreps", n_reps, type)
 
 progressr::handlers(global = TRUE)
@@ -339,6 +342,7 @@ if (!file.exists(file.path(ind_dir, paste0(tag, ".rds")))) {
 
   saveRDS(index_df, file.path(ind_dir, paste0(tag, ".rds")))
   saveRDS(fit_summary, file.path(fit_sum_dir, paste0(tag, ".rds")))
+  beepr::beep()
 } else {
   index_df <- readRDS(file.path(ind_dir, paste0(tag, ".rds"))) |> as_tibble()
   fit_summary <- readRDS(file.path(fit_sum_dir, paste0(tag, ".rds"))) |> as_tibble()
@@ -349,7 +353,7 @@ beep()
 # -------------------------------
 # Used high sample size to check RQR were working for the given distributions
 # Need to make sure that spatial = "on" if sigma > 0, and it isn't really any slower
-seed <- 37
+seed <- 101
 set.seed(seed)
 fit <- sim_fit(
   rep = seed,
@@ -357,9 +361,32 @@ fit <- sim_fit(
   cv = cv, b0 = b0, sigma_O = 1.0, tweedie_p = tweedie_p,
   Q_values = Q_values, gengamma_phi = gengamma_phi,
   type = "",
-  sp = "on", sample_size = 1000,
+  sp = "on", sample_size = 2000,
   save_fits = TRUE, fits_only = TRUE
 )
+
+# Get RQRs
+fit_file <- paste0(seed, "-cv0.95-sigmao1-b0-n2000.rds")
+fits <- readRDS(here::here("data-outputs", "cross-sim", "fits", fit_file))
+sanity_df <- purrr::map_dfr(fits, ~ get_sanity_df(.x, silent = TRUE))
+
+fit_df <- purrr::map_dfr(fits, get_fitted_estimates) |>
+  mutate(id = row_number()) |>
+  mutate(title = ifelse(is.na(Q), sim_family, paste0(sim_family, ": Q=", signif(Q, digits = 2)))) |>
+  arrange(sim_family, Q) |>
+  left_join(sanity_df)
+
+# In case we want to filter things
+idx <- fit_df |>
+  # filter(sim_family == "delta-gengamma", Q == -2, fit_family == "gengamma") |>
+  pull(id)
+
+rqr_df <- purrr::map_dfr(idx, ~ get_rqr(fits[[.x]], id = .x)) |>
+  left_join(fit_df)
+beepr::beep()
+
+saveRDS(rqr_df, file.path(here::here("data-outputs", "cross-sim", paste0('rqr-', fit_file))))
+
 # -------------------------------
 
 # Self check on gg Q estimation
