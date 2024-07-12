@@ -225,7 +225,7 @@ get_fitted_estimates <- function(fit_obj, real_data = FALSE) {
     mod <- ifelse(family1 == "tweedie", 1, 2)
 
     tidy_ran <- tidy(fit_obj, effects = "ran_pars", model = mod) |>
-      tidyr::pivot_wider(names_from = term, values_from = c(estimate, std.error))
+      tidyr::pivot_wider(names_from = term, values_from = c(estimate, std.error, conf.low, conf.high))
 
     if (!real_data) {
       out <- tibble(
@@ -312,15 +312,19 @@ choose_multi_type <- function(cores = cores) {
 # ---------------
 # Residuals
 # ---------------
-get_rqr <- function(fit_obj, id) {
-  m <- if (family(fit_obj)[[1]][1] == "tweedie") 1 else 2
+get_rqr <- function(fit_obj, id, m = NULL) {
+  if (is.null(m)) {
+    m <- if (family(fit_obj)[[1]][1] == "tweedie") 1 else 2
+  } else {
+    m <- m
+  }
   tibble(r = residuals(fit_obj, type = "mle-mvn", model = m), id = id)
 }
 
-get_dr <- function(fit_obj, fit_id, nsim = 200, seed = sample.int(1e6, 1), type = "mle-mvn") {
+get_dr <- function(fit_obj, fit_id, nsim = 200, seed = sample.int(1e6, 1), type = "mle-mvn", ...) {
   set.seed(seed)
-  simulate(fit_obj, nsim = nsim, type = type) |>
-    dharma_residuals(fit_obj, plot = FALSE) |>
+  simulate(fit_obj, nsim = nsim, type = type, ...) |>
+    dharma_residuals(fit_obj, plot = FALSE, ...) |>
     mutate(id = fit_id, seed = seed)
 }
 
