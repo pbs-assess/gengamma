@@ -1,17 +1,21 @@
 library(dplyr)
-# devtools::load_all('../sdmTMB')
-# pak::pkg_install("pbs-assess/sdmTMB")
-library(sdmTMB)
-library(ggplot2)
-theme_set(gfplot::theme_pbs())
+library(sdmTMB) # pak::pkg_install("pbs-assess/sdmTMB")
 
 source("R/00-utils.R")
 
 # Load data
-dat <- readRDS(file.path("data-outputs", "clean-survey-data.rds")) |>
-  filter(survey_abbrev != "SYN WCHG")
+dat <- readRDS(file.path("data", "clean-survey-data.rds")) |>
+  filter(survey_abbrev != "SYN WCHG") |>
+  filter(prop_pos >= 0.2) |>
+  group_by(species) |>
+  mutate(n_regions = n()) |>
+  ungroup()
+
 spp_regions <- distinct(dat, species, survey_abbrev) |>
-  rename(.species = "species", .region = "survey_abbrev")
+  rename(.species = "species", .region = "survey_abbrev") |>
+    group_by(.species) |>
+    mutate(n_regions = n()) |>
+    ungroup()
 
 # Simplified synoptic grid
 syn_grid <- as_tibble(gfplot::synoptic_grid) |>
@@ -19,9 +23,10 @@ syn_grid <- as_tibble(gfplot::synoptic_grid) |>
 
 # tag <- "_sp-on-st-iid"
 # tag <- "_sp-on-st-off"
-.spatial <- "off"
-.spatiotemporal <- "off"
-tag <- paste0("_sp-", .spatial, "-st-", .spatiotemporal, "", sep = "")
+.spatial <- "on"
+.spatiotemporal <- "iid"
+#tag <- paste0("_sp-", .spatial, "-st-", .spatiotemporal, "", sep = "")
+tag <- ""
 dc <- here::here("data", "raw")
 out_dir <- here::here("data-outputs", "bcgf-outputs")
 fit_dir <- here::here("data-outputs", "bcgf-outputs", paste0("fits", tag))
@@ -90,14 +95,14 @@ dir.create(fit_dir, showWarnings = FALSE, recursive = TRUE)
 #   fit
 # }
 
-regions <- c("SYN WCVI", "SYN QCS", "SYN HS", "SYN WCHG")
-families <- c("tweedie", "delta-gamma", "delta-lognormal", "delta-gengamma")
-# "delta-plink-lognormal", "delta-plink-gamma", "delta-plink-gengamma")
-tofit <- tidyr::expand_grid(
-  .region = regions, .family = families,
-  .species = spp_list
-) |>
-  mutate(.id = row_number())
+# regions <- c("SYN WCVI", "SYN QCS", "SYN HS")
+# families <- c("tweedie", "delta-gamma", "delta-lognormal", "delta-gengamma")
+# # "delta-plink-lognormal", "delta-plink-gamma", "delta-plink-gengamma")
+# tofit <- tidyr::expand_grid(
+#   .region = regions, .family = families,
+#   .species = spp_list
+# ) |>
+#   mutate(.id = row_number())
 
 # test_fit <-
 #   tofit |>
@@ -138,22 +143,25 @@ family_lu <- c(
   "delta-lognormal-poisson-link" = "lognormal",
   "delta-gengamma-poisson-link" = "gengamma"
 ) %>%
-  tibble(.family = names(x = .), fit_family = .)
+  tibble(.family = names(x = .), fit_family = .) |>
+  mutate(type = ifelse(grepl('poisson-link', .family), 'poisson-link', 'standard'))
 tofit <- tidyr::expand_grid(
-  .region = regions, .family = families,
-  .species = unique(spp_regions$.species)
+  # .region = regions,
+  # .species = unique(spp_regions$.species),
+  spp_regions |> select(-n_regions),
+  .family = families
 ) |>
   mutate(.id = row_number())
 
 lu_df <- tofit |>
   left_join(family_lu) |>
+  left_join(spp_regions) |>
   mutate(sp_hyp = clean_name(.species)) |>
   tidyr::unite(col = "fname", sp_hyp, .region, .family, sep = "-", remove = FALSE)
 saveRDS(lu_df, file.path(out_dir, "lu-df.rds"))
-# START WITH st = "off" for now.... in part because I want to better understand:
+
+# Turn off spatial/spatiotemporal random fields if they collapse
 # https://github.com/pbs-assess/sdmTMB/issues/263
-# it is also a lot faster
-# Fit models
 # overwrite_cache = TRUE
 overwrite_cache <- FALSE
 # choose_multi_type(cores = 8)

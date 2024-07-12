@@ -59,13 +59,9 @@ mean_pos_sets <- clean_dat |>
   mutate(mean_pos_sets = paste0(round(mean_pos), "/", round(mean_sets)),
          prop_pos = round(mean_pos / mean_sets, digits = 2))
 
-spp_region_keep <- mean_pos_sets |>
-  filter(prop_pos >= 0.05) |>
-  select(species, survey_abbrev)
+dat_out <- left_join(clean_dat, mean_pos_sets)
 
-dat_out <- left_join(spp_region_keep, clean_dat)
-
-saveRDS(clean_dat, file.path("data-outputs", "clean-survey-data.rds"))
+saveRDS(dat_out, file.path("data", "clean-survey-data.rds"))
 
 # ------------------------------------------------------------------------------
 # What proportion of grids are surveyed in a given year?
