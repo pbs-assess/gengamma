@@ -2,6 +2,7 @@ library(dplyr)
 library(ggplot2)
 library(janitor)
 library(sdmTMB)
+library(patchwork)
 theme_set(gfplot::theme_pbs())
 
 source("R/00-utils.R")
@@ -11,8 +12,7 @@ fig_dir <- here::here("figures", "bc-gf-data")
 df_dir <- here::here("data-outputs", "bcgf-outputs")
 
 family_levels <- c(
-  "tweedie",
-  "delta-lognormal", "delta-gamma", "delta-gengamma",
+  "delta-gengamma", "delta-lognormal", "delta-gamma", "tweedie",
   "delta-lognormal-poisson-link", "delta-gamma-poisson-link", "delta-gengamma-poisson-link"
 )
 
@@ -32,146 +32,112 @@ family_colours <- c(
 #                    'delta-gamma' = 17,
 #                    'delta-gengamma' = 18)
 
-dat <- readRDS(file.path("data-outputs", "clean-survey-data.rds")) |>
-  rename(region = "survey_abbrev") |>
-  filter(region != 'SYN WCHG')
+spp_list <- gfsynopsis::get_spp_names() |>
+  select(species = species_common_name, species_code, species_science_name)
 
-spp_lu <- distinct(dat, species, species_code)
+pos_sets <- readRDS(here::here("data", "clean-survey-data.rds")) |>
+  distinct(species, region = survey_abbrev, mean_pos, mean_sets, mean_pos_sets, prop_pos) |>
+  mutate(mean_pos = round(mean_pos), mean_sets = round(mean_sets))
 
-mean_pos_sets <- dat |>
-  group_by(species, region, year) |>
-  summarise(pos = sum(present), n_sets = n()) |>
-  summarise(mean_pos = mean(pos), mean_sets = mean(n_sets), .groups = "drop") |>
-  mutate(
-    mean_pos_sets = paste0(round(mean_pos), "/", round(mean_sets)),
-    prop_pos = round(mean_pos / mean_sets, digits = 2)
-  )
-
-mean_sets <- #aic_plot_df |>
-  mean_pos_sets |>
-  distinct(mean_sets, .keep_all = TRUE) |>
-  mutate(mean_sets = round(mean_sets))
-
-
-spp_region_keep <- mean_pos_sets |>
-  filter(prop_pos >= 0.2) |>
-  #select(species, region, prop_pos) |>
-  group_by(species) |>
-  mutate(n_regions = n()) |>
-  ungroup() |>
-  filter(n_regions == 3)
-
-
-# Use this to filter what to look at
 lu_df <- readRDS(file.path(df_dir, "lu-df.rds")) |>
   janitor::clean_names() |>
-  right_join(spp_region_keep) |>
-  #select(-fname) |>
-  filter(!(stringr::str_detect(family, "poisson-link")))
-# mutate(family_id = as.numeric(factor(family, family_levels))) # all models fit
+  left_join(spp_list) |>
+  left_join(pos_sets)
+lu_df <- lu_df |>
+  filter(type != "poisson-link") |>
+  filter(n_regions == 3)
+
+# fit estimates of models that converged
+fit_ests <- readRDS(file.path(df_dir, "fitted-estimates-all.rds")) |>
+  janitor::clean_names() |>
+  mutate(type = gsub("poisson_link_delta", "poisson-link", type)) |>
+  mutate(type = ifelse(fit_family == "tweedie", "standard", type)) |>
+  right_join(lu_df)
+
+# sanity summary for all models fit (not necessarily converged)
+sanity_df <- readRDS(file.path(df_dir, "sanity-df-all.rds")) |>
+  janitor::clean_names() |>
+  right_join(lu_df)
+
+summary_df <- left_join(fit_ests, sanity_df)
+
+rqr_df <- readRDS(file.path(df_dir, "rqr-catch-df-all.rds")) |>
+  right_join(lu_df) |>
+  mutate(family = factor(family, levels = family_levels))
 
 # indices of models that converged
-# indices <- readRDS(file.path(df_dir, "index-df.rds")) |>
-#   tibble::as_tibble() |>
-#   janitor::clean_names()
-# fit estimates of models that converged
-fit_ests <- readRDS(file.path(df_dir, "fitted-estimates-random-effects-on-and-off.rds")) |>
+index_df <- readRDS(file.path(df_dir, "index-df-all.rds")) |>
   janitor::clean_names() |>
-  select(-fname, -id) |>
-  right_join(lu_df)
-# sanity summary for all models fit (not necessarily converged)
-sanity_df <- readRDS(file.path(df_dir, "sanity-df-random-effects-on-and-off.rds")) |>
-  janitor::clean_names() |>
-  select(-id) |>
-  right_join(lu_df)
+  select(-type) |>
+  right_join(lu_df) |>
+  as_tibble()
 
-# Looking at why the models tend to fail to converge to decide what random fields should be turned off
-sigma_check <- fit_ests |>
-  mutate(bad_sigma_o = ifelse(abs(log(std_error_sigma_o)) > 2, 'bad', 'good'), # "Value to check size of standard errors against. A value of 2 would indicate that standard errors greater than 10^2 (i.e., 100) should be flagged."
-         bad_sigma_e = ifelse(abs(log(std_error_sigma_e)) > 2, 'bad', 'good'),
-         bad_q = ifelse(abs(log(est_qse)) > 2, 'bad', 'good'))
-
-# What rf tends to collapse the most
-sigma_check
-
-
-sigma_check |>
-  filter(spatial == "on" & spatiotemporal == "iid") |>
-  janitor::tabyl(bad_sigma_e)
-
-sigma_check |>
-  filter(spatial == "on" & spatiotemporal == "iid") |>
-  janitor::tabyl(bad_sigma_o)
-
-filter(sigma_check, is.na(bad_sigma_e)) |> glimpse()
-fit_ests |> filter()
-
+# design index
+design_df <- readRDS(here::here("data", "survey-design-index.rds"))
+design_df <- design_df |>
+  select(year, est = biomass, lwr = lowerci, upr = upperci, se = re,
+         species = species_common_name, region = survey_abbrev) |>
+  right_join(distinct(lu_df, species, region)) |>
+  mutate(family = "design")
 
 # Number of models that converged
 sanity_df |>
-  filter(spatial == "on",
-        spatiotemporal == "iid") |>
-  tabyl(fit_family, all_ok)
+  tabyl(family, all_ok)
 
-fit_ests |>
-  filter(fit_family == "gengamma") |>
-  filter(spatial == "on",
-        spatiotemporal == "iid") |>
+# Frequency of estimated Q
+q_ests <- summary_df |>
+  filter(family == "delta-gengamma") |>
   select(species, region, est_q, est_qse) |>
-  pull("est_q") |>
-  hist()
+  arrange(est_q) |>
+  mutate(q_rank = row_number())
+
+hist(q_ests$est_q)
+hist(q_ests$est_q, breaks = "FD")
+
+fd_breaks <- pretty(range(q_ests$est_q), n = nclass.FD(q_ests$est_q), min.n = 1)
+summary_df |>
+  filter(family == "delta-gengamma") |>
+ggplot(aes(x = est_q)) +
+  geom_histogram(bins = 16) +
+  scale_x_continuous(breaks = seq(-1.5, 1.5, 0.25), labels = seq(-1.5, 1.5, 0.25)) +
+  # geom_histogram(breaks = fd_breaks, labels = fd_breaks) +
+  labs(x = "Q estimates", y = "Count")
 
 # ------
-
-
-ff <- aic_df |>
-  filter(!all_ok) |>
-  mutate(path = file.path(df_dir,
-    paste0("fits_sp-", spatial, "-st-", spatiotemporal),
-    paste0(fname, '.rds'))) |>
-  filter(spatial == "on", spatiotemporal == "off")
-  pull(path)
-
-test <- readRDS(ff[1])
-
-glimpse(test)
-
-# New bug?
-test$tmb_data$calc_eao <- 0L
-
-
-aic_df <- fit_ests |>
-  left_join(sanity_df |> select(species, region, fit_family, family, type, spatial, spatiotemporal, all_ok, fname)) |>
-  #select(species, region, family, aic, all_ok) |>
-  filter((spatial == "off" & spatiotemporal == "iid")) |>
-  filter(type != "poisson_link_delta" | is.na(type)) |>
+aic_df <- summary_df |>
   group_by(species, region) |>
   mutate(
     min_aic = min(aic),
-    daic = aic - min_aic
+    daic = aic - min_aic,
+    rel_lik = exp(-0.5 * daic)
   ) |>
+  mutate(aic_w = rel_lik / sum(rel_lik)) |> # see: https://atsa-es.github.io/atsa-labs/sec-uss-comparing-models-with-aic-and-model-weights.html
   ungroup() |>
-  arrange(species)
+  left_join(q_ests) |>
+  #arrange(species)
+  arrange(q_rank)
 
-aic_plot_df <- left_join(lu_df, aic_df) |>
-  #filter(!(species %in% c("butter sole", "copper rockfish", "shortraker rockfish"))) |> # only in one region
-  #left_join(gg_Q) |>
+aic_plot_df <- aic_df |>
+  mutate(species = gsub("north", "", species)) |>
+  mutate(species = stringr::str_to_title(species)) |>
   mutate(
     species_id = as.numeric(factor(species)),
     odd_species = ifelse(species_id %% 2 == 0, 1, 0),
-    converged = ifelse(is.na(aic), 0, 1),
+    converged = ifelse(all_ok, 1, 0),
     x = case_when(
-      is.na(daic) & family == "tweedie" ~ 10^-1,
-      is.na(daic) & family == "delta-lognormal" ~ 10^-0.867,
-      is.na(daic) & family == "delta-gamma" ~ 10^-0.733,
-      is.na(daic) & family == "delta-gengamma" ~ 10^-0.6,
+      !all_ok ~ 10^-0.6,
+      # !all_ok & family == "tweedie" ~ 10^-1,
+      # !all_ok & family == "delta-lognormal" ~ 10^-0.867,
+      # !all_ok & family == "delta-gamma" ~ 10^-0.733,
+      # !all_ok & family == "delta-gengamma" ~ 10^-0.6,
       TRUE ~ daic + 1
     )
   ) |>
-  left_join(spp_lu) |>
   mutate(fspecies = forcats::fct_rev(species)) |>
-  mutate(fspecies2 = forcats::fct_reorder(fspecies, as.numeric(species_code))) |>
-  mutate(odd_species2 = ifelse(as.numeric(fspecies2) %% 2 == 0, 1, 0))
+  # mutate(fspecies2 = forcats::fct_reorder(fspecies, as.numeric(species_code))) |>
+  mutate(fspecies2 = forcats::fct_reorder(fspecies, as.numeric(q_rank))) |>
+  mutate(odd_species2 = ifelse(as.numeric(fspecies2) %% 2 == 0, 1, 0)) |>
+  mutate(family = factor(family, levels = family_levels))
 
 aic_plot <-
   ggplot() +
@@ -182,54 +148,126 @@ aic_plot <-
       width = Inf, height = 1, fill = factor(odd_species2)
     )
   ) +
+  geom_rect(data = aic_plot_df |> distinct(region),
+    aes(xmin = 0.8, xmax = 1.25, ymin = -Inf, ymax = Inf), fill = "white") +
   scale_fill_manual(values = c("grey95", "white")) +
   scale_x_continuous(
-    trans = "log10", labels = scales::label_number(trim = TRUE),
-    limits = c(0.04, 1100)
+    trans = "log10", #breaks = c(0.1, 1, 10, 100, 1000),
+    #labels = c(0.1, 1, 10, 100, 1000),
+    labels = scales::label_number(trim = TRUE, accuracy = 1),
+    limits = c(0.5, 1600)
   ) +
-  gfplot::theme_pbs(base_size = 13) +
+  gfplot::theme_pbs(base_size = 12) +
   facet_wrap(~region, ncol = 3, drop = FALSE) +
   geom_point(
-    data = aic_plot_df |> filter(all_ok),
-    aes(x = x, y = species, colour = family),
-    stroke = 0.5, size = 2, position = ggstance::position_dodgev(height = 0.5)
+    data = aic_plot_df |> filter(all_ok), # models that converged
+    aes(x = x, y = species, colour = family, shape = family),
+    stroke = 0.5, size = 2.5, position = ggstance::position_dodgev(height = 0)
   ) +
-  geom_point(
-    data = aic_plot_df |> filter(!all_ok),
-    aes(x = x, y = species, colour = family),
-    shape = 21, stroke = 0.7, size = 2
-  ) +
+  # geom_point(
+  #   data = aic_plot_df |> filter(!all_ok), # models that did not converge
+  #   aes(x = x, y = species, colour = family),
+  #   shape = 21, stroke = 0.7, size = 2,
+  #   position = ggstance::position_dodgev(height = 0.5)
+  # ) +
   scale_colour_manual(values = family_colours) +
-  labs(x = "Delta AIC + 1", y = "Species", colour = "Family") +
+  labs(x = "Delta AIC + 1", y = "Species", colour = "Family", shape = "Family") +
   guides(fill = "none") +
-  geom_text(
-    data = aic_plot_df |>
-      distinct(species, region, .keep_all = TRUE) |>
-      filter(prop_pos >= 0.05),
-    aes(
-      x = 0.08, y = fspecies2,
-      label = round(mean_pos)
-    ), # paste0(round(mean_pos), "(", prop_pos, ")")),
-    hjust = 1, colour = "grey50",
-    size = 3
-  ) +
-  geom_text(data = mean_sets, aes(
-    x = 0.08, y = length(unique(aic_plot_df$species)),
-    label = mean_sets
-  ), vjust = -2, hjust = 1, size = 3) +
+  # geom_text(
+  #   data = aic_plot_df |> distinct(species, region, .keep_all = TRUE),
+  #   aes(x = 0.5, y = fspecies2, label = round(mean_pos)), # paste0(round(mean_pos), "(", prop_pos, ")")),
+  #   hjust = 1, colour = "grey50",
+  #   size = 3
+  # ) +
+  # geom_text(data = distinct(aic_plot_df, region, mean_sets), aes(
+  #   x = 0.5, y = length(unique(aic_plot_df$species)),
+  #   label = mean_sets
+  # ), vjust = -3.5, hjust = 1, size = 3) +
+  geom_text(data = filter(aic_plot_df, family == "delta-gengamma"), aes(
+    x = 1600, y = fspecies2,
+    label = round(est_q, digits = 1)
+  ), hjust = 0.75, size = 3) +
   # geom_text(data = aic_plot_df |> filter(prop_pos >= 0.05), aes(x = 0.04, y = fspecies2, label = signif(est_q, 2)),
   #           size = 2.5, hjust = 0) +
-  coord_cartesian(clip = "off") +
-  theme(legend.margin = margin(0, 0, 0, -0.3, "cm"))
-aic_plot
-ggsave(aic_plot, width = 13, height = 9, filename = file.path(fig_dir, "aic-plot-spp-code-order.png"))
+  coord_cartesian(clip = "off")
+  #theme(legend.margin = margin(0, 0, 0, -0.3, "cm"))
+aic_plot +
+  theme(axis.title.y = element_blank(),
+        axis.title.x = element_text(vjust = 0),
+        axis.text = element_text(size = 9),
+        panel.spacing.x = unit(0.2, "lines"),
+        panel.border = element_rect(fill = NA, linewidth = 0.5),
+        legend.title = element_blank(),
+        legend.position = "top",
+        legend.margin = margin(0, 0, -0.3, 0, "cm"))
+aic_plot_filename <- "aic-plot-spp-code-order.png"
+#aic_plot_filename <- "aic-plot-qest-order.png"
+ggsave(aic_plot, width = 13, height = 9, filename = file.path(fig_dir, aic_plot_filename))
 
 
+# Plot indices
+# -----------------
+#p1 <-
+pind <- index_df |>
+  left_join(select(aic_df, fname, min_aic:q_rank)) |>
+  filter(species == "lingcod")
 
+ggplot(data = pind, aes(x = year, y = est, group = family)) +
+    geom_line(aes(colour = family)) +
+    geom_ribbon(aes(ymin = lwr, ymax = upr, fill = family), alpha = 0.3) +
+    geom_text()
+    scale_y_continuous(trans = "log10") +
+    facet_grid(species ~ region, scales = "free_y") +
+    scale_colour_manual(values = family_colours) +
+    scale_fill_manual(values = family_colours)
+
+p2 <- rqr_df |>
+  filter(species == "lingcod") |>
+  mutate(fit_family = factor(tolower(fit_family), gsub("delta-", "", family_levels))) |>
+  ggplot(aes(sample = r)) +
+  geom_qq() +
+  geom_abline(intercept = 0, slope = 1) +
+  facet_grid(fit_family ~ region, scales = "free", switch = "y") +
+  scale_y_continuous(breaks = seq(-6, 6, by = 2), labels = seq(-6, 6, by = 2), position = "right") +
+  labs(x = "Theoretical", y = "Sample") +
+  theme(strip.text.x = element_blank())
+
+p1 / p2
 
 # ------------------------------------------------------------------------------
+# Will anyone want to see the estimated CV of the different fits to real data?
+get_ln_phi <- function(model) {
+  m <- ifelse(family(model)[[1]][[1]] == 'tweedie', 1, 2)
+  tibble(
+    ln_phi = model$parlist$ln_phi[[m]],
+    species = unique(model$data$species),
+    region = unique(model$data$survey_abbrev),
+    spatial = unique(model$spatial),
+    spatiotemporal = unique(model$spatiotemporal),
+    fit_family = family(model)[[m]][[1]],
+    type = family(model)$type
+  )
+}
 
+f <- list.files(file.path(df_dir, c("fits_sp-off-st-iid", "fits_sp-off-st-off", "fits_sp-on-st-iid", "fits_sp-on-st-off")),
+  full.names = TRUE)
 
+ln_phi_df <- f |>
+  purrr::map(~ {
+    model <- readRDS(.x)
+    try(get_ln_phi(model))
+  }) |>
+  purrr::keep(is.data.frame) |>
+  bind_rows()
+
+filter(ln_phi_df, fit_family == "Gamma", type == "standard") |>
+  left_join(sanity_df) |>
+  filter(all_ok) |>
+  mutate(cv = get_gamma_cv(phi = exp(ln_phi))) |>
+  pull('cv') |>
+  hist()
+
+get_gamma_cv <- function(phi) 1 / sqrt(phi)
 
 
 
