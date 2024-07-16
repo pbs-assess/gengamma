@@ -117,24 +117,16 @@ get_fit <- function(survey_dat, formula, region, family, species = NULL,
     sanity_check <- all(unlist(sdmTMB::sanity(fit, gradient_thresh = 0.005)))
 
     if (!sanity_check) {
-      sigma_check <- check_sigma_collapse(fit)
-      if ("sigma_O" %in% sigma_check) sp = "off"
-      if ("sigma_E" %in% sigma_check) st = "off"
-
-      # Deal with non-positive definite hessian - how to decide what random field to turn off
-      # for now let's just turn off the spatiotemporal to start and see how it goes
-      # because we aren't including any covariates I think it might make more
-      # sense to turn off the st field?
-      if (isFALSE(fit$pos_def_hessian)) {
-        st <- "off"
-      }
+      rfs <- update_collapsed_rf(fit)
+      sp <- rfs$sp
+      st <- rfs$st
     }
   } else {
     sanity_check <- FALSE
   }
 
-  # Turn off spatial and/or spatiotemporal rf that collapse to zero
-  if (!sanity_check) {
+  # Turn off spatial and/or spatiotemporal rf that collapse to zero and refit
+  if (!sanity_check & (any(sp == "off") | any(st == "off"))) {
     #message("\tFitting: sp = ", sp, ", st = ", st, " for ", species, "-", region, "-", family, " failed")
     message("\tUpdating with sp = ", sp, "st = ", st)
     fit <- tryCatch(
@@ -147,21 +139,28 @@ get_fit <- function(survey_dat, formula, region, family, species = NULL,
 
 is_delta <- function(fit_obj) ifelse(family(fit_obj)[[1]][[1]] == "tweedie", FALSE, TRUE)
 
-check_sigma_collapse <- function(fit) {
-  rp <- sdmTMB::tidy(fit, "ran_pars", 1) |>
-    mutate(m = 1)
+update_collapsed_rf <- function(fit) {
+  rp <- sdmTMB::tidy(fit, "ran_pars", 1)
+  rp$m <- 1
 
   if (is_delta(fit)) {
-    rp2 <- sdmTMB::tidy(fit, "ran_pars", 2) |>
-      mutate(m = 2)
+    rp2 <- sdmTMB::tidy(fit, "ran_pars", 2)
+    rp2$m <- 2
     rp <- bind_rows(rp, rp2)
   }
 
-  # Find indices where term contains "sigma" and estimate < 0.01
-  id_s <- grep("sigma", rp$term)
-  id_cs <- id_s[rp$estimate[id_s] < 0.01]
-  collapsed_sigma <- rp[id_cs, ] # Does it mean anything if it is the sigma in the encounter vs catch that collapses?
-  unique(collapsed_sigma$term)
+  rp$collapse = ifelse(rp$estimate < 0.01, TRUE, FALSE)
+  sp <- list()
+  st <- list()
+
+  if (any(rp$term == "sigma_O")) {
+    sp <- as.list(ifelse(rp$collapse[rp$term == "sigma_O"], "off", "on"))
+  }
+  if (any(rp$term == "sigma_E")) {
+    st <- as.list(ifelse(rp$collapse[rp$term == "sigma_E"], "off", "iid"))
+  }
+
+  list(sp, st)
 }
 
 # Fit models across families
