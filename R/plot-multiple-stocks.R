@@ -141,6 +141,17 @@ aic_plot_df <- aic_df |>
 
 aic_plot <-
   ggplot() +
+  gfplot::theme_pbs(base_size = 12) +
+  theme(axis.title.y = element_blank(),
+        axis.title.x = element_text(vjust = 0),
+        axis.text = element_text(size = 9),
+        panel.spacing.x = unit(0.2, "lines"),
+        panel.border = element_rect(fill = NA, linewidth = 0.5),
+        legend.title = element_blank(),
+        legend.position = "top",
+        legend.margin = margin(0, 0, -0.3, 0, "cm")) +
+  coord_cartesian(clip = "off", expand = FALSE) +
+  facet_wrap(~region, ncol = 3, drop = FALSE) +
   geom_tile(
     data = aic_plot_df |> distinct(species, region, .keep_all = TRUE),
     mapping = aes(
@@ -148,31 +159,35 @@ aic_plot <-
       width = Inf, height = 1, fill = factor(odd_species2)
     )
   ) +
-  geom_rect(data = aic_plot_df |> distinct(region),
-    aes(xmin = 0.8, xmax = 1.25, ymin = -Inf, ymax = Inf), fill = "white") +
   scale_fill_manual(values = c("grey95", "white")) +
-  scale_x_continuous(
-    trans = "log10", #breaks = c(0.1, 1, 10, 100, 1000),
-    #labels = c(0.1, 1, 10, 100, 1000),
-    labels = scales::label_number(trim = TRUE, accuracy = 1),
-    limits = c(0.5, 1600)
-  ) +
-  gfplot::theme_pbs(base_size = 12) +
-  facet_wrap(~region, ncol = 3, drop = FALSE) +
+  annotate(geom = "rect", xmin = 0.6, xmax = 2, ymin = -Inf, ymax = Inf, fill = "white") +
   geom_point(
     data = aic_plot_df |> filter(all_ok), # models that converged
     aes(x = x, y = species, colour = family, shape = family),
-    stroke = 0.5, size = 2.5, position = ggstance::position_dodgev(height = 0)
+    stroke = 0.5, size = 2, position = ggstance::position_dodgev(height = 0)
   ) +
+  scale_colour_manual(values = family_colours) +
+  labs(x = "Delta AIC + 1", y = "Species",
+       #shape = "Family",
+       colour = "Family") +
+  guides(fill = "none") +
+  scale_x_continuous(
+    trans = "log10",
+    labels = scales::label_number(trim = TRUE, accuracy = 1),
+    limits = c(0.6, 3000)
+  ) +
+  annotate(geom = "text", x = 1600, y = length(unique(aic_plot_df$species)),
+           vjust = -2, hjust = 0.75, label = "Q", colour = "grey30") +
+  geom_text(data = filter(aic_plot_df, family == "delta-gengamma"), aes(
+    x = 1600, y = fspecies2,
+    label = round(est_q, digits = 1)
+  ), hjust = 0.75, size = 3, colour = "grey50")
   # geom_point(
   #   data = aic_plot_df |> filter(!all_ok), # models that did not converge
   #   aes(x = x, y = species, colour = family),
   #   shape = 21, stroke = 0.7, size = 2,
   #   position = ggstance::position_dodgev(height = 0.5)
   # ) +
-  scale_colour_manual(values = family_colours) +
-  labs(x = "Delta AIC + 1", y = "Species", colour = "Family", shape = "Family") +
-  guides(fill = "none") +
   # geom_text(
   #   data = aic_plot_df |> distinct(species, region, .keep_all = TRUE),
   #   aes(x = 0.5, y = fspecies2, label = round(mean_pos)), # paste0(round(mean_pos), "(", prop_pos, ")")),
@@ -183,26 +198,12 @@ aic_plot <-
   #   x = 0.5, y = length(unique(aic_plot_df$species)),
   #   label = mean_sets
   # ), vjust = -3.5, hjust = 1, size = 3) +
-  geom_text(data = filter(aic_plot_df, family == "delta-gengamma"), aes(
-    x = 1600, y = fspecies2,
-    label = round(est_q, digits = 1)
-  ), hjust = 0.75, size = 3) +
   # geom_text(data = aic_plot_df |> filter(prop_pos >= 0.05), aes(x = 0.04, y = fspecies2, label = signif(est_q, 2)),
   #           size = 2.5, hjust = 0) +
-  coord_cartesian(clip = "off")
-  #theme(legend.margin = margin(0, 0, 0, -0.3, "cm"))
-aic_plot +
-  theme(axis.title.y = element_blank(),
-        axis.title.x = element_text(vjust = 0),
-        axis.text = element_text(size = 9),
-        panel.spacing.x = unit(0.2, "lines"),
-        panel.border = element_rect(fill = NA, linewidth = 0.5),
-        legend.title = element_blank(),
-        legend.position = "top",
-        legend.margin = margin(0, 0, -0.3, 0, "cm"))
-aic_plot_filename <- "aic-plot-spp-code-order.png"
-#aic_plot_filename <- "aic-plot-qest-order.png"
-ggsave(aic_plot, width = 13, height = 9, filename = file.path(fig_dir, aic_plot_filename))
+aic_plot
+#aic_plot_filename <- "aic-plot-spp-code-order.png"
+aic_plot_filename <- "aic-plot-qest-order.png"
+ggsave(aic_plot, width = 7.5, height = 6, filename = file.path(fig_dir, aic_plot_filename))
 
 
 # Plot indices
