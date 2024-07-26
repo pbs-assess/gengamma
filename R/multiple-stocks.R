@@ -21,11 +21,8 @@ spp_regions <- distinct(dat, species, survey_abbrev) |>
 syn_grid <- as_tibble(gfplot::synoptic_grid) |>
   select(survey, X, Y, depth)
 
-# tag <- "_sp-on-st-iid"
-# tag <- "_sp-on-st-off"
 .spatial <- "on"
 .spatiotemporal <- "iid"
-#tag <- paste0("_sp-", .spatial, "-st-", .spatiotemporal, "", sep = "")
 tag <- ""
 dc <- here::here("data", "raw")
 out_dir <- here::here("data-outputs", "bcgf-outputs")
@@ -162,10 +159,10 @@ saveRDS(lu_df, file.path(out_dir, "lu-df.rds"))
 
 # Turn off spatial/spatiotemporal random fields if they collapse
 # https://github.com/pbs-assess/sdmTMB/issues/263
-# overwrite_cache = TRUE
+# overwrite_cache <- TRUE
 overwrite_cache <- FALSE
 # choose_multi_type(cores = 8)
-future::plan(future::multisession, workers = 10)
+future::plan(future::multisession, workers = 8)
 progressr::with_progress({
   handler <- progressr::progressor(along = tofit$.id)
   fits <- tofit |>
@@ -190,3 +187,113 @@ progressr::with_progress({
   beep()
   future::plan(future::sequential())
 })
+
+# Look at using priors for trouble species
+trouble_fits <- tofit |>
+  filter((.species == "walleye pollock" & .region == "SYN HS") |
+        (.species == "sablefish" & .region == "SYN HS") |
+        (.species == "silvergray rockfish" & .region == "SYN WCVI")) |>
+  filter(!(stringr::str_detect(.family, "poisson-link")))
+
+# Start with priors
+tr_fit_dir <- file.path(fit_dir, 'priors')
+dir.create(tr_fit_dir)
+trouble_fits |>
+  purrr::pmap(\(.region, .family, .id, .species) {
+    sp_file <- file.path(tr_fit_dir, paste0(clean_name(.species), "-", .region, "-", .family, ".rds"))
+    f <- get_fit(
+      survey_dat = survey_dat,
+      formula = as.formula(catch_weight ~ 0 + as.factor(year)),
+      offset = "offset",
+      region = .region, family = .family, species = .species,
+      cutoff = cutoff, sp = .spatial, st = .spatiotemporal,
+      use_priors = TRUE
+    )
+    saveRDS(f, sp_file)
+  })
+
+scaled_fit_dir <- file.path(fit_dir, 'scaled')
+dir.create(scaled_fit_dir)
+trouble_fits |>
+  purrr::pmap(\(.region, .family, .id, .species) {
+    sp_file <- file.path(scaled_fit_dir, paste0(clean_name(.species), "-", .region, "-", .family, ".rds"))
+    f <- get_fit(
+      survey_dat = survey_dat,
+      formula = as.formula(catch_weight / 10 ~ 0 + as.factor(year)),
+      offset = "offset",
+      region = .region, family = .family, species = .species,
+      cutoff = cutoff, sp = .spatial, st = .spatiotemporal,
+      use_priors = FALSE
+    )
+    saveRDS(f, sp_file)
+
+  })
+
+sable <- get_fit(
+  survey_dat = survey_dat,
+  formula = as.formula(catch_weight / 10 ~ 0 + as.factor(year)),
+  offset = "offset",
+  region = "SYN HS", family = "delta-gengamma", species = "sablefish",
+  cutoff = cutoff, sp = .spatial, st = .spatiotemporal,
+  use_priors = TRUE
+)
+
+s_pred <- get_pred(fit = sable)
+s_i <- get_index(s_pred, area = 4, bias_correct = TRUE) |>
+  mutate(fname = "sablefish-SYN HS-delta-gengamma", type = "standard") |>
+  left_join(lu_df)
+
+s_i |>
+  group_by(fname) |>
+  summarise(mean_ind_cv = mean(sqrt(exp(se^2) - 1)))
+
+pollock <- get_fit(
+  survey_dat = survey_dat,
+  formula = as.formula(catch_weight / 100 ~ 0 + as.factor(year)),
+  offset = "offset",
+  region = "SYN HS", family = "delta-gengamma", species = "walleye pollock",
+  cutoff = cutoff, sp = .spatial, st = .spatiotemporal,
+  use_priors = TRUE
+)
+
+p_pred <- get_pred(fit = pollock)
+p_i <- get_index(p_pred, area = 4, bias_correct = TRUE) |>
+  mutate(fname = "pollock-SYN HS-delta-gengamma", type = "standard") |>
+  left_join(lu_df)
+
+p_i |>
+  group_by(fname) |>
+  summarise(mean_ind_cv = mean(sqrt(exp(se^2) - 1)))
+
+survey_dat |> filter(species == "walleye pollock", survey_abbrev == "SYN HS") |>
+pull(catch_weight) |> max()
+
+silvergray <- get_fit(
+  survey_dat = survey_dat,
+  formula = as.formula(catch_weight ~ 0 + as.factor(year)),
+  offset = "offset",
+  region = "SYN WCVI", family = "delta-gengamma", species = "silvergray rockfish",
+  cutoff = cutoff, sp = .spatial, st = .spatiotemporal,
+  use_priors = TRUE, prior_sd = 10,
+  control = sdmTMBcontrol(newton_loops = 3L),
+  silent = FALSE
+)
+silvergray
+
+sg_pred <- get_pred(fit = silvergray)
+sg_i <- get_index(sg_pred, area = 4, bias_correct = TRUE) |>
+  mutate(fname = "silvergray-rockfish-SYN WCVI-delta-gengamma", type = "standard") |>
+  left_join(lu_df)
+
+sg_i |>
+  group_by(fname) |>
+  summarise(mean_ind_cv = mean(sqrt(exp(se^2) - 1)))
+
+survey_dat |> filter(species == "silvergray rockfish", survey_abbrev == "SYN WCVI") |>
+pull(catch_weight) |> max()
+
+
+test <- readRDS(file.path(fit_dir, 'priors', "sablefish-SYN HS-delta-gengamma.rds"))
+test <- readRDS(file.path(fit_dir, 'priors', "sablefish-SYN HS-delta-gamma.rds"))
+test
+sable

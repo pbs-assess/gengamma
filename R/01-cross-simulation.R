@@ -353,22 +353,37 @@ beep()
 # -------------------------------
 # Used high sample size to check RQR were working for the given distributions
 # Need to make sure that spatial = "on" if sigma > 0, and it isn't really any slower
-seed <- 101
+seed <- 42
 set.seed(seed)
+sample_size = 4000
 fit <- sim_fit(
   rep = seed,
   predictor_dat = predictor_dat, mesh_sim = mesh_sim,
-  cv = cv, b0 = b0, sigma_O = 1.0, tweedie_p = tweedie_p,
+  cv = cv, b0 = b0, sigma_O = 0, tweedie_p = tweedie_p,
   Q_values = Q_values, gengamma_phi = gengamma_phi,
   type = "",
-  sp = "on", sample_size = 2000,
+  sp = "on", sample_size = sample_size,
   save_fits = TRUE, fits_only = TRUE
 )
 
+# Get raw data for sampled observations
+rqr_dat <- sim_fit(
+  rep = seed,
+  predictor_dat = predictor_dat, mesh_sim = mesh_sim,
+  cv = cv, b0 = b0, sigma_O = 1, tweedie_p = tweedie_p,
+  Q_values = Q_values, gengamma_phi = gengamma_phi,
+  type = "",
+  sp = "on", sample_size = sample_size,
+  get_simulation_output = TRUE
+)$sim_df
+
+fit_file <- paste0(seed, "-cv0.95-sigmao1-b0-n", sample_size, ".rds")
+
+saveRDS(rqr_dat, here::here("data-outputs", "cross-sim", gsub("\\.rds", "-rqr-data.rds", fit_file)))
+
 # Get RQRs
-fit_file <- paste0(seed, "-cv0.95-sigmao1-b0-n2000.rds")
 fits <- readRDS(here::here("data-outputs", "cross-sim", "fits", fit_file))
-sanity_df <- purrr::map_dfr(fits, ~ get_sanity_df(.x, silent = TRUE))
+sanity_df <- purrr::map_dfr(fits, ~ get_sanity_df(.x, silent = TRUE, .gradient_thresh = 0.005))
 
 fit_df <- purrr::map_dfr(fits, get_fitted_estimates) |>
   mutate(id = row_number()) |>

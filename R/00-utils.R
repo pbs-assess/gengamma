@@ -1,3 +1,13 @@
+family_colours <- c(
+  "tweedie" =  "#F748A5", #' honolulu blue'
+  "delta-lognormal" = "#359B73", #' ocean green'
+  "delta-gamma" = "#d55e00", # 'bamboo'
+  "delta-gengamma" ="#2271B2" # 'barbie pink'
+)
+
+family_colours_no_delta <- family_colours
+names(family_colours_no_delta) <- gsub("delta-", "", names(family_colours))
+
 rgengamma <- function(n, mean, sigma, Q) {
   lambda <- Q
   ind0 <- lambda == 0
@@ -79,7 +89,7 @@ choose_family <- function(fit_fam) {
 get_fit <- function(survey_dat, formula, region, family, species = NULL,
                    cutoff = 8, time = "year",
                    sp = "on", st = "iid", offset = "offset",
-                   use_priors = FALSE, ...) {
+                   use_priors = FALSE, prior_sd = 30, ...) {
   survey_dat <- filter(survey_dat, survey_abbrev %in% region)
 
   if (is.null(species)) {
@@ -90,11 +100,12 @@ get_fit <- function(survey_dat, formula, region, family, species = NULL,
   mesh <- sdmTMB::make_mesh(survey_dat, xy_cols = c("X", "Y"), cutoff = cutoff)
 
   ny <- length(unique(survey_dat$year))
+  .family <- choose_family(family)
 
   b_priors <- sdmTMB::normal(NA, NA)
 
   if (use_priors) {
-    b_priors <- sdmTMB::normal(rep(0, ny), rep(30, ny))
+    b_priors <- sdmTMB::normal(rep(0, ny), rep(prior_sd, ny))
   }
 
   fit <- tryCatch(
@@ -106,7 +117,7 @@ get_fit <- function(survey_dat, formula, region, family, species = NULL,
       spatial = sp,
       spatiotemporal = st,
       offset = "offset",
-      family = choose_family(family),
+      family = .family,
       priors = sdmTMB::sdmTMBpriors(b = b_priors),
       ...
     ),
@@ -120,20 +131,19 @@ get_fit <- function(survey_dat, formula, region, family, species = NULL,
       rfs <- update_collapsed_rf(fit)
       sp <- rfs$sp
       st <- rfs$st
+      # Turn off spatial and/or spatiotemporal rf that collapse to zero and refit
+      if ((any(sp == "off") | any(st == "off"))) {
+        message("\tUpdating with sp = ", paste0(sp, collapse = "-"), " | st = ", paste0(st, collapse = "-"))
+        fit <- tryCatch(
+          update(fit, spatial = sp, spatiotemporal = st),
+          error = function(e) paste(species, region, family, "\n\tError:", e, sep = " - ")
+        )
+      }
     }
   } else {
     sanity_check <- FALSE
   }
 
-  # Turn off spatial and/or spatiotemporal rf that collapse to zero and refit
-  if (!sanity_check & (any(sp == "off") | any(st == "off"))) {
-    #message("\tFitting: sp = ", sp, ", st = ", st, " for ", species, "-", region, "-", family, " failed")
-    message("\tUpdating with sp = ", sp, "st = ", st)
-    fit <- tryCatch(
-      update(fit, spatial = sp, spatiotemporal = st),
-      error = function(e) paste(species, region, family, "\n\tError:", e, sep = " - ")
-    )
-  }
   fit
 }
 
@@ -150,8 +160,6 @@ update_collapsed_rf <- function(fit) {
   }
 
   rp$collapse = ifelse(rp$estimate < 0.01, TRUE, FALSE)
-  sp <- list()
-  st <- list()
 
   if (any(rp$term == "sigma_O")) {
     sp <- as.list(ifelse(rp$collapse[rp$term == "sigma_O"], "off", "on"))
@@ -160,7 +168,7 @@ update_collapsed_rf <- function(fit) {
     st <- as.list(ifelse(rp$collapse[rp$term == "sigma_E"], "off", "iid"))
   }
 
-  list(sp, st)
+  list(sp = sp, st = st)
 }
 
 # Fit models across families
@@ -202,8 +210,8 @@ get_sanity_df <- function(fit_obj, real_data = FALSE, silent = FALSE, .gradient_
       fit_family = ifelse(family(fit_obj)[[1]][[1]] == 'tweedie', 'tweedie', family(fit_obj)[[2]][[1]]),
       gradient_thresh = .gradient_thresh,
       type = type,
-      spatial = unique(fit_obj$spatial),
-      spatiotemporal = unique(fit_obj$spatiotemporal)
+      spatial = paste0(fit_obj$spatial, collapse = "-"),
+      spatiotemporal = paste0(fit_obj$spatiotemporal, collapse = "-")
     ) |>
     bind_cols(tibble::tibble(!!!sanity(fit_obj, silent = silent, gradient_thresh = .gradient_thresh)))
   }
@@ -247,15 +255,30 @@ get_fitted_estimates <- function(fit_obj, real_data = FALSE) {
         type = type,
         est_Q = gg_Q,
         est_Qse = gg_Q_se,
-        spatial = unique(fit_obj$spatial),
-        spatiotemporal = unique(fit_obj$spatiotemporal),
-        aic = AIC(fit_obj)
+        spatial = paste0(fit_obj$spatial, collapse = "-"),
+        spatiotemporal = paste0(fit_obj$spatiotemporal, collapse = "-"),
+        aic = AIC(fit_obj),
       )
     }
     bind_cols(out, tidy_ran)
   } else {
     fit_obj
   }
+}
+
+get_pred <- function(fit = NULL, fit_file) {
+  if (is.null(fit)) {
+    fit <- readRDS(file.path(tr_fit_dir, paste0(fit_file, '.rds')))
+  }
+    region <- unique(fit$data$survey_abbrev)
+    years <- unique(fit$data$year)
+    sg <- syn_grid |> filter(survey %in% region)
+    nd <- sdmTMB::replicate_df(
+      dat = sg,
+      time_name = "year",
+      time_values = years
+    )
+    predict(fit, newdata = nd, return_tmb_object = TRUE)
 }
 
 get_index_summary <- function(predict_obj) {

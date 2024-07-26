@@ -19,7 +19,7 @@ plot_violin <- function(.data, .x, .ncol = NULL,
     geom_violin(aes(colour = fit_family), scale = .scale, adjust = .adjust, bw = "SJ") +
     geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50") +
     stat_summary(fun = .summary_fun, geom = "point", colour = "black") +
-    scale_color_brewer(palette = "Dark2") +
+    scale_color_manual(values = family_colours_no_delta) +
     facet_wrap(~title, ncol = .ncol) +
     guides(colour = "none") +
     theme(axis.title.y = element_blank())
@@ -30,7 +30,7 @@ plot_linedot <- function(.data, .x, .ncol = NULL, xint = 0.95) {
     geom_linerange(xmin = 0, mapping = aes(xmax = {{ .x }})) +
     geom_point(size = 3) +
     geom_vline(xintercept = xint, linetype = "dashed") +
-    scale_color_brewer(palette = "Dark2") +
+    scale_color_manual(values = family_colours_no_delta) +
     facet_wrap(~title, ncol = .ncol) +
     guides(colour = "none")
 }
@@ -44,7 +44,7 @@ relevel_fit_family <- function(df, fam_levels = c("gengamma", "tweedie", "gamma"
 filter_plot_df <- function(x, apply_filter = TRUE) {
   if (apply_filter) {
     x <- x |>
-      filter(is.na(Q) | (Q %in% c(-1, -0.5, 2)))
+      filter(is.na(Q) | (Q %in% c(-1, 2)))
       # filter(is.na(Q) | (Q %in% c(NA, -1, -0.5, 0.001, 0.8, 2))) |>
       # filter(cv == 0.8, sigma_O == 1)
       # filter(is.na(Q) | (Q %in% c(-1, -0.5, 0.001, 0.5, 2))) |>
@@ -77,6 +77,13 @@ title_lu <- tibble(
   title = c("gengamma (Q = -1)", "lognormal (Q = 0)", "gamma (Q = phi)", "tweedie", "gengamma (Q = 2)"),
   sim_family = c("delta-gengamma", "delta-lognormal", "delta-gamma", "tweedie", "delta-gengamma"),
   Q = c(-1, NA, NA, NA, 2)
+)
+
+rqr_title_levels <- c(
+  "gg: Q=-2", "gg: Q=-1", "gg: Q=-0.5",
+  "gg: Q=-0.001", "lognormal", "gg: Q=0.001",
+  "gg: Q=0.5", "gg: Q=0.95", "gamma", "gg: Q=1", "gg: Q=2",
+  "tweedie"
 )
 
 # Prepare full plotting df
@@ -113,17 +120,53 @@ plot_df <- plot_df |>
 
 # Residuals
 # ----------
-rqr_df <- readRDS(file.path(here::here("data-outputs", "cross-sim", "rqr-101-cv0.95-sigmao1-b0-n2000.rds")))
+# # trying to understand differences in tails
+# rqr_sampled_dat <- readRDS(here::here("data-outputs", "cross-sim", paste0("101-cv0.95-sigmao1-b0-n2000-rqr-data.rds")))
 
+# test <- rqr_sampled_dat |>
+#   filter_plot_df() |>
+#   filter((family == "tweedie") | (family != "tweedie" & observed > 0)) |>
+#   #filter(observed > 0) |>
+#   mutate(sim_family = family) |>
+#   select(sim_family, Q, observed) |>
+#   left_join(title_lu) |>
+#   mutate(title = factor(title, levels = title_lu$title))
+
+#   #filter((family == "tweedie") | (family != "tweedie" & observed > 0)) |>
+# test <- rqr_sampled_dat |>
+#   filter(is.na(Q) | Q %in% c(-2, -1, 0.001, 0.95, 2)) |>
+#   filter(observed > 0) |>
+#   arrange(family, Q) |>
+#   mutate(title = paste(family, Q)) |>
+#   mutate(title = forcats::fct_inorder(title))
+
+# ggplot(data = test, aes(x = observed)) +
+#   geom_density(aes(fill = title), alpha = 0.5, adjust = 3) +
+#   geom_density(data = test |> filter(Q == 0.001), colour = "black", adjust = 3, linewidth = 2) +
+#   xlim(c(2, 10))
+#   geom_histogram() +
+#   facet_wrap(~ title, ncol = 12, scales = 'free_x')
+
+rqr_df <- readRDS(file.path(here::here("data-outputs", "cross-sim", "rqr-101-cv0.95-sigmao1-b0-n2000.rds")))
 rqr_df <- rqr_df |>
   filter(sanity_allok == TRUE) |>
   mutate(title = gsub("delta-", "", title)) |>
   mutate(title = gsub("gengamma", "gg", title)) |>
   mutate(title = gsub("-poisson-link", "", title)) |>
   relevel_fit_family()
-rqr_title_levels <- unique(rqr_df$title)
-rqr_title_levels <- c(rqr_title_levels[-1], rqr_title_levels[1])
+#rqr_title_levels <- unique(rqr_df$title)
+#rqr_title_levels <- c(rqr_title_levels[-1], rqr_title_levels[1])
+#rqr_title_levels <- c(rqr_title_levels[-], rqr_title_levels[1])
 
+
+rqr_df |>
+  mutate(title = factor(title, levels = rqr_title_levels)) |>
+  ggplot(data = _, aes(x = r)) +
+  geom_histogram(aes(y = after_stat(density)), position="identity") +
+  #geom_density() +
+  facet_grid(fit_family ~ title, scale = "free_y") +
+  stat_function(fun = dnorm, colour = "red", linewidth = 1) +
+  xlim(c(-5, 5))
 # ------------------
 # Main text figures
 # ------------------
@@ -133,6 +176,26 @@ main_text_df <-
   left_join(title_lu) |>
   filter(!is.na(title)) |>
   mutate(title = factor(title, levels = title_lu$title))
+
+# QQ plot
+rqr_plot <- rqr_df |>
+  select(-title) |>
+  left_join(title_lu) |>
+  filter(!is.na(title)) |>
+  mutate(title = factor(title, levels = title_lu$title)) |>
+  ggplot(aes(sample = r)) +
+  geom_qq() +
+  geom_abline(intercept = 0, slope = 1) +
+  facet_grid(fit_family ~ title, switch = "y") +
+  coord_fixed() +
+  scale_y_continuous(limits = c(-6.2, 6.2), breaks = seq(-6, 6, by = 2), labels = seq(-6, 6, by = 2), position = "right") +
+  scale_x_continuous(limits = c(-4.6, 4.6), breaks = seq(-6, 6, by = 2), labels = seq(-6, 6, by = 2)) +
+  labs(x = "Theoretical", y = "Sample") +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.spacing = unit(0.1, "cm"))
+rqr_plot
+ggsave(width = 7.2, height = 7.6, filename = file.path(fig_dir, "../figure-2-cross-sim-qq.png"))
 
 # Relative error
 re <- main_text_df |>
@@ -155,27 +218,6 @@ aic_weight <- main_text_df |>
 
 (re / aic_weight)
 ggsave(width = 8, height = 6, filename = file.path(fig_dir, "../figure-3-cross-sim-RE-AIC-weight.png"))
-
-# QQ plot
-rqr_plot <- rqr_df |>
-  select(-title) |>
-  left_join(title_lu) |>
-  filter(!is.na(title)) |>
-  mutate(title = factor(title, levels = title_lu$title)) |>
-  ggplot(aes(sample = r)) +
-  geom_qq() +
-  geom_abline(intercept = 0, slope = 1) +
-  facet_grid(fit_family ~ title, scales = "free", switch = "y") +
-  scale_y_continuous(breaks = seq(-6, 6, by = 2), labels = seq(-6, 6, by = 2), position = "right") +
-  labs(x = "Theoretical", y = "Sample")
-
-rqr_plot
-ggsave(width = 7.5, height = 7.5, filename = file.path(fig_dir, "../figure-2-cross-sim-qq.png"))
-
-# ggsave(rqr_plot, filename = file.path(fig_dir, paste0("rqr-", family(fits[[1]])$type, ".png")),
-#   width = 15, height = 7
-# )
-
 
 # ------
 
@@ -219,7 +261,7 @@ aic_weight <-
   geom_violin(aes(colour = fit_family), scale = "width") +
   stat_summary(fun = mean, geom = "point", colour = "black") +
   geom_vline(xintercept = 0, linetype = "dashed") +
-  scale_color_brewer(palette = "Dark2") +
+  scale_color_brewer(values = family_colours) +
   scale_x_continuous(labels = scales::label_percent(suffix = "")) +
   facet_wrap(~title, ncol = 10) +
   guides(colour = "none") +
