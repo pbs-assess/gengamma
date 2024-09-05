@@ -1,5 +1,6 @@
 family_colours <- c(
   "tweedie" =  "#F748A5", #' honolulu blue'
+  "Tweedie" =  "#F748A5", #' honolulu blue'
   "delta-lognormal" = "#359B73", #' ocean green'
   "delta-gamma" = "#d55e00", # 'bamboo'
   "delta-gengamma" ="#2271B2" # 'barbie pink'
@@ -90,14 +91,18 @@ get_fit <- function(survey_dat, formula, region, family, species = NULL,
                    cutoff = 8, time = "year",
                    sp = "on", st = "iid", offset = "offset",
                    use_priors = FALSE, prior_sd = 30, ...) {
-  survey_dat <- filter(survey_dat, survey_abbrev %in% region)
+  survey_dat <- filter(survey_dat, region %in% {{region}})
 
   if (is.null(species)) {
     species <- unique(survey_dat$species)
   } else {
     survey_dat <- filter(survey_dat, species == {{species}})
   }
-  mesh <- sdmTMB::make_mesh(survey_dat, xy_cols = c("X", "Y"), cutoff = cutoff)
+  if (region != "GOA"){
+    mesh <- sdmTMB::make_mesh(survey_dat, xy_cols = c("X", "Y"), cutoff = cutoff)
+  } else {
+    mesh <- sdmTMB::make_mesh(survey_dat, xy_cols = c("X", "Y"), type = "cutoff_search", n_knots = 500)
+  }
 
   ny <- length(unique(survey_dat$year))
   .family <- choose_family(family)
@@ -206,7 +211,7 @@ get_sanity_df <- function(fit_obj, real_data = FALSE, silent = FALSE, .gradient_
   } else {
     out <- tibble(
       species = unique(fit_obj$data$species),
-      region = unique(fit_obj$data$survey_abbrev),
+      region = unique(fit_obj$data$region),
       fit_family = ifelse(family(fit_obj)[[1]][[1]] == 'tweedie', 'tweedie', family(fit_obj)[[2]][[1]]),
       gradient_thresh = .gradient_thresh,
       type = type,
@@ -246,7 +251,7 @@ get_fitted_estimates <- function(fit_obj, real_data = FALSE) {
         type = type
       )
     } else {
-      region <- unique(fit_obj$data$survey_abbrev)
+      region <- unique(fit_obj$data$region)
       species <- unique(fit_obj$data$species)
       out <- tibble(
         species = species,
@@ -270,7 +275,7 @@ get_pred <- function(fit = NULL, fit_file) {
   if (is.null(fit)) {
     fit <- readRDS(file.path(tr_fit_dir, paste0(fit_file, '.rds')))
   }
-    region <- unique(fit$data$survey_abbrev)
+    region <- unique(fit$data$region)
     years <- unique(fit$data$year)
     sg <- syn_grid |> filter(survey %in% region)
     nd <- sdmTMB::replicate_df(
@@ -374,4 +379,72 @@ my_update <- function(mod, formula = NULL, data = NULL) {
   env <- attr(term, ".Environment")
 
   eval(call, env, parent.frame())
+}
+
+scale_override <- function(which, scale) {
+  if(!is.numeric(which) || (length(which) != 1) || (which %% 1 != 0)) {
+    stop("which must be an integer of length 1")
+  }
+
+  if(is.null(scale$aesthetics) || !any(c("x", "y") %in% scale$aesthetics)) {
+    stop("scale must be an x or y position scale")
+  }
+
+  structure(list(which = which, scale = scale), class = "scale_override")
+}
+
+CustomFacetWrap <- ggplot2::ggproto(
+  "CustomFacetWrap", ggplot2::FacetWrap,
+  init_scales = function(self, layout, x_scale = NULL, y_scale = NULL, params) {
+    # make the initial x, y scales list
+    scales <- ggproto_parent(FacetWrap, self)$init_scales(layout, x_scale, y_scale, params)
+
+    if(is.null(params$scale_overrides)) return(scales)
+
+    max_scale_x <- length(scales$x)
+    max_scale_y <- length(scales$y)
+
+    # ... do some modification of the scales$x and scales$y here based on params$scale_overrides
+    for(scale_override in params$scale_overrides) {
+      which <- scale_override$which
+      scale <- scale_override$scale
+
+      if("x" %in% scale$aesthetics) {
+        if(!is.null(scales$x)) {
+          if(which < 0 || which > max_scale_x) stop("Invalid index of x scale: ", which)
+          scales$x[[which]] <- scale$clone()
+        }
+      } else if("y" %in% scale$aesthetics) {
+        if(!is.null(scales$y)) {
+          if(which < 0 || which > max_scale_y) stop("Invalid index of y scale: ", which)
+          scales$y[[which]] <- scale$clone()
+        }
+      } else {
+        stop("Invalid scale")
+      }
+    }
+
+    # return scales
+    scales
+  }
+)
+
+facet_wrap_custom <- function(..., scale_overrides = NULL) {
+  # take advantage of the sanitizing that happens in facet_wrap
+  facet_super <- facet_wrap(...)
+
+  # sanitize scale overrides
+  if(inherits(scale_overrides, "scale_override")) {
+    scale_overrides <- list(scale_overrides)
+  } else if(!is.list(scale_overrides) ||
+            !all(vapply(scale_overrides, inherits, "scale_override", FUN.VALUE = logical(1)))) {
+    stop("scale_overrides must be a scale_override object or a list of scale_override objects")
+  }
+
+  facet_super$params$scale_overrides <- scale_overrides
+
+  ggplot2::ggproto(NULL, CustomFacetWrap,
+    shrink = facet_super$shrink,
+    params = facet_super$params
+  )
 }

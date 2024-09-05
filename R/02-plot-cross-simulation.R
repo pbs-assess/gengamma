@@ -3,6 +3,7 @@ library(ggplot2)
 library(sdmTMB)
 library(patchwork)
 library(ggtext)
+library(ggh4x)
 
 theme_set(
   theme_light(base_size = 12) +
@@ -22,7 +23,8 @@ plot_violin <- function(.data, .x, .ncol = NULL,
     scale_color_manual(values = family_colours_no_delta) +
     facet_wrap(~title, ncol = .ncol) +
     guides(colour = "none") +
-    theme(axis.title.y = element_blank())
+    theme(#axis.title.y = element_blank(),
+          strip.text.x = ggtext::element_markdown())
 }
 
 plot_linedot <- function(.data, .x, .ncol = NULL, xint = 0.95) {
@@ -38,7 +40,8 @@ plot_linedot <- function(.data, .x, .ncol = NULL, xint = 0.95) {
 relevel_fit_family <- function(df, fam_levels = c("gengamma", "tweedie", "gamma", "lognormal")) {
   df |>
     mutate(fit_family = tolower(fit_family)) |>
-    mutate(fit_family = factor(fit_family, fam_levels))
+    mutate(fit_family = factor(fit_family, fam_levels)) |>
+    mutate(fit_family = forcats::fct_recode(fit_family, "Tweedie" = "tweedie"))
 }
 
 filter_plot_df <- function(x, apply_filter = TRUE) {
@@ -74,7 +77,7 @@ tag <- ""
 apply_filter <- TRUE
 
 title_lu <- tibble(
-  title = c("gengamma (Q = -1)", "lognormal (Q = 0)", "gamma (Q = phi)", "tweedie", "gengamma (Q = 2)"),
+  title = c("gengamma (Q = -1)", "lognormal (Q = 0)", "gamma (Q = &sigma;)", "tweedie", "gengamma (Q = 2)"),
   sim_family = c("delta-gengamma", "delta-lognormal", "delta-gamma", "tweedie", "delta-gengamma"),
   Q = c(-1, NA, NA, NA, 2)
 )
@@ -118,35 +121,12 @@ plot_df <- plot_df |>
   mutate(xtitle = paste0("cv = ", cv, "\nsigma_O = ", sigma_O)) |>
   relevel_fit_family()
 
+# ------------------
+# Main text figures
+# ------------------
+
 # Residuals
 # ----------
-# # trying to understand differences in tails
-# rqr_sampled_dat <- readRDS(here::here("data-outputs", "cross-sim", paste0("101-cv0.95-sigmao1-b0-n2000-rqr-data.rds")))
-
-# test <- rqr_sampled_dat |>
-#   filter_plot_df() |>
-#   filter((family == "tweedie") | (family != "tweedie" & observed > 0)) |>
-#   #filter(observed > 0) |>
-#   mutate(sim_family = family) |>
-#   select(sim_family, Q, observed) |>
-#   left_join(title_lu) |>
-#   mutate(title = factor(title, levels = title_lu$title))
-
-#   #filter((family == "tweedie") | (family != "tweedie" & observed > 0)) |>
-# test <- rqr_sampled_dat |>
-#   filter(is.na(Q) | Q %in% c(-2, -1, 0.001, 0.95, 2)) |>
-#   filter(observed > 0) |>
-#   arrange(family, Q) |>
-#   mutate(title = paste(family, Q)) |>
-#   mutate(title = forcats::fct_inorder(title))
-
-# ggplot(data = test, aes(x = observed)) +
-#   geom_density(aes(fill = title), alpha = 0.5, adjust = 3) +
-#   geom_density(data = test |> filter(Q == 0.001), colour = "black", adjust = 3, linewidth = 2) +
-#   xlim(c(2, 10))
-#   geom_histogram() +
-#   facet_wrap(~ title, ncol = 12, scales = 'free_x')
-
 rqr_df <- readRDS(file.path(here::here("data-outputs", "cross-sim", "rqr-101-cv0.95-sigmao1-b0-n2000.rds")))
 rqr_df <- rqr_df |>
   filter(sanity_allok == TRUE) |>
@@ -154,28 +134,6 @@ rqr_df <- rqr_df |>
   mutate(title = gsub("gengamma", "gg", title)) |>
   mutate(title = gsub("-poisson-link", "", title)) |>
   relevel_fit_family()
-#rqr_title_levels <- unique(rqr_df$title)
-#rqr_title_levels <- c(rqr_title_levels[-1], rqr_title_levels[1])
-#rqr_title_levels <- c(rqr_title_levels[-], rqr_title_levels[1])
-
-
-rqr_df |>
-  mutate(title = factor(title, levels = rqr_title_levels)) |>
-  ggplot(data = _, aes(x = r)) +
-  geom_histogram(aes(y = after_stat(density)), position="identity") +
-  #geom_density() +
-  facet_grid(fit_family ~ title, scale = "free_y") +
-  stat_function(fun = dnorm, colour = "red", linewidth = 1) +
-  xlim(c(-5, 5))
-# ------------------
-# Main text figures
-# ------------------
-main_text_df <-
-  plot_df |>
-  select(-title) |>
-  left_join(title_lu) |>
-  filter(!is.na(title)) |>
-  mutate(title = factor(title, levels = title_lu$title))
 
 # QQ plot
 rqr_plot <- rqr_df |>
@@ -183,27 +141,53 @@ rqr_plot <- rqr_df |>
   left_join(title_lu) |>
   filter(!is.na(title)) |>
   mutate(title = factor(title, levels = title_lu$title)) |>
+  mutate(title = forcats::fct_recode(title, "Tweedie" = "tweedie")) |>
   ggplot(aes(sample = r)) +
   geom_qq() +
   geom_abline(intercept = 0, slope = 1) +
-  facet_grid(fit_family ~ title, switch = "y") +
+  facet_grid(fit_family ~ title) +
   coord_fixed() +
-  scale_y_continuous(limits = c(-6.2, 6.2), breaks = seq(-6, 6, by = 2), labels = seq(-6, 6, by = 2), position = "right") +
+  scale_y_continuous(limits = c(-6.2, 6.2), breaks = seq(-6, 6, by = 2), labels = seq(-6, 6, by = 2), position = "left") +
   scale_x_continuous(limits = c(-4.6, 4.6), breaks = seq(-6, 6, by = 2), labels = seq(-6, 6, by = 2)) +
   labs(x = "Theoretical", y = "Sample") +
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
-        panel.spacing = unit(0.1, "cm"))
-rqr_plot
-ggsave(width = 7.2, height = 7.6, filename = file.path(fig_dir, "../figure-2-cross-sim-qq.png"))
+        panel.spacing = unit(0.1, "cm"),
+        plot.background = element_blank(),
+        plot.margin = margin(0, 0, 0, 0, "cm"),
+        tagger.panel.tag.background = element_blank(),
+        strip.background = element_blank(),
+        strip.text.x = ggtext::element_markdown()) +
+  tagger::tag_facets()
 
-# Relative error
+wrap_elements(plot = grid::textGrob("Simulated distribution", vjust = 0), clip = FALSE) +
+  wrap_elements(full = rqr_plot, clip = FALSE) +
+  wrap_elements(plot = grid::textGrob("Fitted distribution", rot = 270, vjust = 1), clip = FALSE) +
+  plot_layout(widths = c(50, 0.5), heights = c(0.5, 50),
+    design = "A#
+    BC")
+
+ggsave(width = 7.3, height = 7.5, filename = file.path(fig_dir, "../figure-2-cross-sim-qq.png"))
+
+# Relative error & AIC weight
+# ---------------------------
+main_text_df <-
+  plot_df |>
+  select(-title) |>
+  left_join(title_lu) |>
+  filter(!is.na(title)) |>
+  mutate(title = factor(title, levels = title_lu$title)) |>
+  mutate(title = forcats::fct_recode(title, "Tweedie" = "tweedie"))
+
 re <- main_text_df |>
   plot_violin(.x = re, .ncol = 5, .summary_fun = "median") +
   scale_x_continuous(limits = c(-0.25, 1.25), breaks = c(0, 0.5, 1), labels = c(0, 0.5, 1)) +
-  labs(x = "RE", y = "Fit family") +
-  ggtitle(paste0("(a) Relative error ", tag))+
-  theme(plot.title = element_text(hjust = -0.05))
+  guides(x = guide_axis(title = "Relative error"),
+    x.sec = guide_none(title = "Simulated"),
+    y = guide_axis(title = "Fitted")
+  ) +
+  theme(axis.title.x = element_text(vjust = -1, size = 14, margin = margin(0, 0, 10, 2)),
+        axis.title.x.top = element_text(vjust = 1, size = 12))
 
 # AIC weights
 aic_weight <- main_text_df |>
@@ -212,12 +196,16 @@ aic_weight <- main_text_df |>
     .scale = "width",
     .summary_fun = "median") +
   scale_x_continuous(breaks = c(0, 0.25, 0.5, 0.75, 1), labels = c(0, 0.25, 0.5, 0.75, 1)) +
-  labs(x = "Weight (%)", y = "Fit family") +
-  ggtitle(paste0("(b) AIC weight ", tag)) +
-  theme(plot.title = element_text(hjust = -0.05))
+  guides(x = guide_axis(title = "AIC weight (%)"),
+    x.sec = guide_none(title = "Simulated"),
+    y = guide_axis(title = "Fitted")
+  ) +
+  theme(axis.title.x = element_text(vjust = -1, size = 14),
+        axis.title.x.top = element_text(vjust = 1, size = 12))
 
-(re / aic_weight)
-ggsave(width = 8, height = 6, filename = file.path(fig_dir, "../figure-3-cross-sim-RE-AIC-weight.png"))
+((re / aic_weight) + plot_annotation(tag_levels = 'a', tag_suffix = ")")) &
+  theme(plot.tag.position  = c(0, .9))
+ggsave(width = 8, height = 5, filename = file.path(fig_dir, "../figure-3-cross-sim-RE-AIC-weight.png"))
 
 # ------
 
@@ -357,22 +345,23 @@ ggsave(filename = file.path(fig_dir, paste0("aic_weight-sanity", tag, ".png")), 
 # ------------------------------------------------------------------------------
 # Residuals
 # ------------------------------------------------------------------------------
-rqr_df <- readRDS(file.path(here::here("data-outputs", "cross-sim", "rqr-101-cv0.95-sigmao1-b0-n2000.rds")))
+# rqr_df <- readRDS(file.path(here::here("data-outputs", "cross-sim", "rqr-101-cv0.95-sigmao1-b0-n2000.rds")))
 
-rqr_df <- rqr_df |>
-  filter(sanity_allok == TRUE) |>
-  mutate(title = gsub("delta-", "", title)) |>
-  mutate(title = gsub("gengamma", "gg", title)) |>
-  mutate(title = gsub("-poisson-link", "", title))
-rqr_title_levels <- unique(rqr_df$title)
-rqr_title_levels <- c(rqr_title_levels[-1], rqr_title_levels[1])
+# rqr_df <- rqr_df |>
+#   filter(sanity_allok == TRUE) |>
+#   mutate(title = gsub("delta-", "", title)) |>
+#   mutate(title = gsub("gengamma", "gg", title)) |>
+#   mutate(title = gsub("-poisson-link", "", title))
+# rqr_title_levels <- unique(rqr_df$title)
+# rqr_title_levels <- c(rqr_title_levels[-1], rqr_title_levels[1])
 
 # Check gengamma rqr
 # idx <- fit_df |>
 #   filter(sim_family == "delta-gengamma", fit_family == "gengamma", sanity_allok == TRUE) |>
 #   pull(id)
 rqr_plot <- rqr_df |>
-  mutate(title = factor(title, levels = rqr_title_levels)) |>
+  mutate(title = factor(gsub("gg: ", "gengamma\n", title), levels = gsub("gg: ", "gengamma\n", rqr_title_levels))) |>
+  mutate(title = forcats::fct_recode(title, "lognormal\n" = "lognormal", "gamma\n" = "gamma", "Tweedie\n" = "tweedie")) |>
   relevel_fit_family() |>
   ggplot(aes(sample = r)) +
   geom_qq() +
@@ -380,7 +369,7 @@ rqr_plot <- rqr_df |>
   facet_grid(fit_family ~ title)
 rqr_plot
 
-ggsave(rqr_plot, filename = file.path(fig_dir, paste0("rqr-", family(fits[[1]])$type, ".png")),
+ggsave(rqr_plot, filename = file.path(fig_dir, paste0("rqr-", tag, ".png")),
   width = 15, height = 7
 )
 

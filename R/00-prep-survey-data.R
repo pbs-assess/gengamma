@@ -1,3 +1,4 @@
+library(surveyjoin) # pak::pkg_install("DFO-NOAA-Pacific/surveyjoin")
 library(dplyr)
 
 # ------------------------------------------------------------------------------
@@ -49,11 +50,17 @@ clean_dat <- survey_dat |>
     present = ifelse(catch_weight > 0, 1, 0)) |>
   mutate(offset = log(area_swept / 1e5)) |>
   rename(species = "species_common_name") |>
-  select(species, species_code, survey_abbrev, year, depth_m, X, Y, longitude, latitude,
-    present, catch_weight, density_kgpm2, offset)
+  select(species, species_code, region = survey_abbrev, year, depth_m, X, Y, longitude, latitude,
+    present, catch_weight, offset)
+
+hs_qcs_dat <- clean_dat |>
+  filter(region %in% c("SYN HS", "SYN QCS")) |>
+  mutate(region = "HS-QCS")
+
+clean_dat <- bind_rows(clean_dat, hs_qcs_dat)
 
 mean_pos_sets <- clean_dat |>
-  group_by(species, survey_abbrev, year) |>
+  group_by(species, region, year) |>
   summarise(pos = sum(present), n_sets = n()) |>
   summarise(mean_pos = mean(pos), mean_sets = mean(n_sets), .groups = 'drop') |>
   mutate(mean_pos_sets = paste0(round(mean_pos), "/", round(mean_sets)),
@@ -61,7 +68,72 @@ mean_pos_sets <- clean_dat |>
 
 dat_out <- left_join(clean_dat, mean_pos_sets)
 
-saveRDS(dat_out, file.path("data", "clean-survey-data.rds"))
+saveRDS(dat_out, here::here("data", "clean-survey-data.rds"))
+
+# ---------------------------
+# Get the Gulf of Alaska data
+# ---------------------------
+spp <- c(
+  "shortspine thornyhead",
+  "rex sole",
+  "longnose skate",
+  "arrowtooth flounder",
+  "dover sole",
+  "petrale sole",
+  "english sole",
+  "spotted ratfish",
+  "flathead sole",
+  "pacific ocean perch",
+  "lingcod",
+  "pacific cod",
+  "sablefish",
+  "walleye pollock",
+  "north pacific spiny dogfish",
+  "silvergray rockfish"
+)
+
+itis_lu <- gfsynopsis::get_spp_names() |>
+  filter(species_common_name %in% spp) |>
+  mutate(itis_tsn = replace(itis_tsn, itis_tsn == 160617, 160620)) |>
+  select(species_common_name, species_code, itis_tsn)
+
+# Open data base connection
+load_sql_data()
+
+d <- get_data(itis_id = itis_lu$itis_tsn, regions = "afsc") |>
+  filter(survey_name == "Gulf of Alaska") |>
+  tidyr::drop_na(common_name) # I think these are caused by the itis ids that are in the look up but not in the GoA data
+
+# Exclude the years where there were no catch since we are fitting year as iid
+no_catch_years <- d |>
+  group_by(common_name, itis, year) |>
+  summarise(annual_catch = sum(catch_weight)) |>
+  filter(annual_catch == 0)
+
+d2 <- d |>
+  anti_join(no_catch_years |> select(-annual_catch)) |>
+  sdmTMB::add_utm_columns(c("lon_start", "lat_start"), utm_crs = 32609) |>
+  mutate(offset = log(effort),
+         present = ifelse(catch_weight > 0, 1, 0)) |>
+  select(common_name, itis, region, year, depth_m, X, Y, lat_start, lon_start,
+         present, catch_weight, offset) |>
+  left_join(itis_lu, by = c("itis" = "itis_tsn")) |>
+  arrange(species_common_name) |>
+  select(-common_name) |>
+  rename(species = "species_common_name") |>
+  mutate(region = "GOA")
+d2
+
+goa_mean_pos_sets <- d2 |>
+  group_by(species, region, year) |>
+  summarise(pos = sum(present), n_sets = n()) |>
+  summarise(mean_pos = mean(pos), mean_sets = mean(n_sets), .groups = 'drop') |>
+  mutate(mean_pos_sets = paste0(round(mean_pos), "/", round(mean_sets)),
+         prop_pos = round(mean_pos / mean_sets, digits = 2))
+
+d2 <- left_join(d2, goa_mean_pos_sets)
+
+saveRDS(d2, here::here("data", "clean-afsc-data.rds"))
 
 # ------------------------------------------------------------------------------
 # What proportion of grids are surveyed in a given year?

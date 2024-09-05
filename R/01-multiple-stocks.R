@@ -3,142 +3,80 @@ library(sdmTMB) # pak::pkg_install("pbs-assess/sdmTMB")
 
 source("R/00-utils.R")
 
+# Make things faster by only fitting the 16 species that occur in all three surveys
+spp <- c(
+  "shortspine thornyhead",
+  "rex sole",
+  "longnose skate",
+  # "silvergray rockfish", # not in the GoA data
+  "arrowtooth flounder",
+  "dover sole",
+  "petrale sole",
+  "english sole",
+  "spotted ratfish",
+  "flathead sole",
+  "pacific ocean perch",
+  "lingcod",
+  "pacific cod",
+  "sablefish",
+  "walleye pollock",
+  "north pacific spiny dogfish"
+)
+
 # Load data
-dat <- readRDS(file.path("data", "clean-survey-data.rds")) |>
-  filter(survey_abbrev != "SYN WCHG") |>
-  filter(prop_pos >= 0.2) |>
+# ---------------
+bc_dat <- readRDS(here::here("data", "clean-survey-data.rds")) |>
+  filter(region != "SYN WCHG") |>
+  #filter(prop_pos >= 0.2) |>
   group_by(species) |>
   mutate(n_regions = n()) |>
-  ungroup()
+  ungroup() |>
+  filter(species %in% spp)
 
-spp_regions <- distinct(dat, species, survey_abbrev) |>
-  rename(.species = "species", .region = "survey_abbrev") |>
+goa_dat <- readRDS(here::here("data", "clean-afsc-data.rds")) |>
+  mutate(longitude = lon_start, latitude = lat_start)
+
+dat <- bind_rows(
+  bc_dat |> filter(prop_pos >= 0.2),
+  goa_dat
+  ) |>
+  filter(!(region %in% c("SYN HS", "SYN QCS")))
+saveRDS(dat, here::here("data-outputs", "data-used.rds"))
+
+spp_regions <- distinct(dat, species, region) |>
+  rename(.species = "species", .region = "region") |>
     group_by(.species) |>
     mutate(n_regions = n()) |>
     ungroup()
-
-# Simplified synoptic grid
-syn_grid <- as_tibble(gfplot::synoptic_grid) |>
-  select(survey, X, Y, depth)
 
 .spatial <- "on"
 .spatiotemporal <- "iid"
 tag <- ""
 dc <- here::here("data", "raw")
-out_dir <- here::here("data-outputs", "bcgf-outputs")
-fit_dir <- here::here("data-outputs", "bcgf-outputs", paste0("fits", tag))
+out_dir <- here::here("data-outputs", "multi-species")
+fit_dir <- here::here("data-outputs", "multi-species", paste0("fits", tag))
 dir.create(fit_dir, showWarnings = FALSE, recursive = TRUE)
 
-# For fitting select species/regions/families
 # ------------------------------------------------------------------------------
-# regions <- c("SYN WCVI", "SYN QCS", "SYN HS", "SYN WCHG")
-# families <- c("tweedie",
-#   "delta-gamma", "delta-lognormal", "delta-gengamma")
-#   #"delta-plink-lognormal", "delta-plink-gamma", "delta-plink-gengamma")
-# tofit <- tidyr::expand_grid(.region = regions, .family = families,
-#   .species = unique(spp_regions$.species)) |>
-#   right_join(spp_regions) |>
-#   mutate(.id = row_number())
-
-# species <- spp_list[[4]]
-# species <- "north pacific spiny dogfish"
-# scaler <- 1e-2 # works
-# region <- "SYN WCVI"
-
-# species <- "walleye pollock"
-# region <- "SYN WCVI"
-# scaler <- 1e-3 # QCS needs 1e-1; nothing seems to fix SYN WCVI
-
-# sp_file <- paste0(clean_name(species), ".rds")
-# cutoff <- 8
-# save_fits <- TRUE
-
-# get_fit <- function(survey_dat, formula, region, family, species = NULL, cutoff = 8, time = "year",
-#                    sp = "on", st = "iid", offset = "offset") {
-#   survey_dat <- filter(survey_dat, survey_abbrev %in% region)
-
-#   if (is.null(species)) {
-#     species <- unique(survey_dat$species)
-#   } else {
-#     survey_dat <- filter(survey_dat, species == {{species}})
-#   }
-#   mesh <- make_mesh(survey_dat, xy_cols = c("X", "Y"), cutoff = cutoff)
-#   fit <- tryCatch(
-#     sdmTMB(
-#       formula = formula,
-#       data = survey_dat,
-#       mesh = mesh,
-#       time = "year",
-#       spatial = sp,
-#       spatiotemporal = st,
-#       offset = "offset",
-#       family = choose_family(family)
-#     ),
-#     error = function(e) paste(species, region, family, "\n\tError:", e, sep = " - ")
-#   )
-
-#   if (inherits(fit, "sdmTMB")) {
-#     sanity_check <- all(unlist(sdmTMB::sanity(fit, gradient_thresh = 0.005)))
-#   }
-#   # Turn off spatial field if model does not fit and spatiotemporal == "off"
-#   if ((!inherits(fit, "sdmTMB") | !sanity_check) & (sp == "on" & st == "off")) {
-#     message("\tFitting: sp = ", sp, ", st = ", st, " for ", species, "-", region, "-", family, " failed")
-#     message("\tUpdating with sp = off")
-#     fit <- tryCatch(
-#       update(fit, spatial = "off"),
-#       error = function(e) paste(species, region, family, "\n\tError:", e, sep = " - ")
-#     )
-#   }
-#   fit
-# }
-
-# regions <- c("SYN WCVI", "SYN QCS", "SYN HS")
-# families <- c("tweedie", "delta-gamma", "delta-lognormal", "delta-gengamma")
-# # "delta-plink-lognormal", "delta-plink-gamma", "delta-plink-gengamma")
-# tofit <- tidyr::expand_grid(
-#   .region = regions, .family = families,
-#   .species = spp_list
-# ) |>
-#   mutate(.id = row_number())
-
-# test_fit <-
-#   tofit |>
-#     filter(.species == species) |>
-#     filter(.region == region) |>
-#     filter(.family == "delta-gengamma") |>
-#     purrr::pmap(\(.region, .family, .id, .species) {
-#         get_fit(survey_dat = dat |> mutate(catch_weight = catch_weight * scaler),
-#             formula = as.formula(catch_weight ~ 0 + as.factor(year)),
-#             offset = "offset",
-#             region = .region, family = .family, species = .species,
-#             cutoff = cutoff, sp = "on", st = "off"
-#             )
-#     })
-# beep()
-# if (save_fits) {
-#   message("Saving fits: ", sp_file)
-#   saveRDS(fits, file.path(fit_dir, sp_file))
-# }
-# beep()
-# ------------------------------------------------------------------------------
-
+# Prep modelling inputs
+# ----------------------
 survey_dat <- dat
 cutoff <- 8
-regions <- c("SYN WCVI", "SYN QCS", "SYN HS")
+regions <- c("SYN WCVI", "GOA", "HS-QCS")
 families <- c(
   "tweedie",
-  "delta-gamma", "delta-lognormal", "delta-gengamma",
-  "delta-gamma-poisson-link", "delta-lognormal-poisson-link", "delta-gengamma-poisson-link"
+  "delta-gamma", "delta-lognormal", "delta-gengamma"#,
+  #"delta-gamma-poisson-link", "delta-lognormal-poisson-link", "delta-gengamma-poisson-link"
 )
 # "delta-plink-lognormal", "delta-plink-gamma", "delta-plink-gengamma")
 family_lu <- c(
   "tweedie" = "tweedie",
   "delta-gamma" = "Gamma",
   "delta-lognormal" = "lognormal",
-  "delta-gengamma" = "gengamma",
-  "delta-gamma-poisson-link" = "Gamma",
-  "delta-lognormal-poisson-link" = "lognormal",
-  "delta-gengamma-poisson-link" = "gengamma"
+  "delta-gengamma" = "gengamma"#,
+  # "delta-gamma-poisson-link" = "Gamma",
+  # "delta-lognormal-poisson-link" = "lognormal",
+  # "delta-gengamma-poisson-link" = "gengamma"
 ) %>%
   tibble(.family = names(x = .), fit_family = .) |>
   mutate(type = ifelse(grepl('poisson-link', .family), 'poisson-link', 'standard'))
@@ -157,15 +95,17 @@ lu_df <- tofit |>
   tidyr::unite(col = "fname", sp_hyp, .region, .family, sep = "-", remove = FALSE)
 saveRDS(lu_df, file.path(out_dir, "lu-df.rds"))
 
-# Turn off spatial/spatiotemporal random fields if they collapse
-# https://github.com/pbs-assess/sdmTMB/issues/263
+# ----------------------
+# Fit models
+# ----------------------
+tofit <- tofit  |> filter(.region %in% regions) # only fit the big three
+
 # overwrite_cache <- TRUE
 overwrite_cache <- FALSE
-# choose_multi_type(cores = 8)
 future::plan(future::multisession, workers = 8)
 progressr::with_progress({
   handler <- progressr::progressor(along = tofit$.id)
-  fits <- tofit |>
+  tofit |>
     # purrr::pmap(\(.region, .family, .id, .species) {
     furrr::future_pmap(\(.region, .family, .id, .species) {
       handler() # Signal progress
@@ -188,73 +128,105 @@ progressr::with_progress({
   future::plan(future::sequential())
 })
 
-# Look at using priors for trouble species
-trouble_fits <- tofit |>
-  filter((.species == "walleye pollock" & .region == "SYN HS") |
-        (.species == "sablefish" & .region == "SYN HS") |
-        (.species == "silvergray rockfish" & .region == "SYN WCVI")) |>
-  filter(!(stringr::str_detect(.family, "poisson-link")))
+# ------------------------------------------------------------------------------
+# Look at trouble fits
+# ------------------------------------------------------------------------------
+library(ggplot2)
 
-# Start with priors
-tr_fit_dir <- file.path(fit_dir, 'priors')
-dir.create(tr_fit_dir)
+trouble_fits <- tofit |>
+  filter((.species == "walleye pollock" & .region == "GOA") |
+        (.species == "petrale sole" & .region == "GOA") |
+        (.species == "walleye pollock" & .region == "HS-QCS"))
+
+prior_fit_dir <- file.path(out_dir, "priors", "fits")
+dir.create(prior_fit_dir, showWarnings = FALSE, recursive = TRUE)
+
+scale_fit_dir <- file.path(out_dir, "scale", "fits")
+dir.create(scale_fit_dir, showWarnings = FALSE, recursive = TRUE)
+
+hist_df <- semi_join(survey_dat, trouble_fits, by = c("species" = ".species", "region" = ".region")) |>
+  filter(catch_weight > 0) |>
+  mutate(species = stringr::str_to_title(species))
+
+set_label <- hist_df |>
+  group_by(species, region) |>
+  mutate(bins = cut_interval(catch_weight, n = 30),
+         max_catch = max(catch_weight)) |>
+  add_count(bins) |>
+  summarise(max_count = max(n), max_catch = max(max_catch)) |>
+  left_join(hist_df |> distinct(species, region, mean_pos, mean_sets, mean_pos_sets, prop_pos)) |>
+  mutate(percent_pos = round(prop_pos * 100)) |>
+  # mutate(label = paste0("Mean~positive~sets:~",
+  #                     "frac(", round(mean_pos), ",", round(mean_sets), ")",
+  #                     "~`=`~", percent_pos, "*\"%\""))
+  mutate(label = paste0("Mean positive sets: ", percent_pos, "%"))
+
+ggplot(data = hist_df, mapping = aes(x = catch_weight)) +
+  gfplot::theme_pbs(base_size = 12) +
+  geom_histogram(bins = 30, closed = "right", boundary = 0.001) +
+  geom_text(data = set_label, aes(x = max_catch, y = max_count,
+    label = label),# parse = TRUE,
+    hjust = 1, vjust = 3, size = 3.5) +
+  scale_y_continuous(trans = "sqrt") +
+  ggh4x::facet_nested_wrap(~ species + region, scale = "free") +
+  theme(strip.text = element_text(size = 11)) +
+  labs(x = "Catch weight (kg)", y = "Count")
+
+ggsave(width = 7.8, height = 2.8, filename = here::here("figures", "supp", "petrale-pollock-dists.png"))
+
+# Using priors
+# -------------
 trouble_fits |>
   purrr::pmap(\(.region, .family, .id, .species) {
-    sp_file <- file.path(tr_fit_dir, paste0(clean_name(.species), "-", .region, "-", .family, ".rds"))
+    prior_sd = 50
+    sp_file <- file.path(prior_fit_dir, paste0(clean_name(.species), "-", .region, "-", .family, ".rds"))
+    message(clean_name(.species), "-", .region, "-", .family)
     f <- get_fit(
       survey_dat = survey_dat,
       formula = as.formula(catch_weight ~ 0 + as.factor(year)),
       offset = "offset",
       region = .region, family = .family, species = .species,
       cutoff = cutoff, sp = .spatial, st = .spatiotemporal,
-      use_priors = TRUE
+      use_priors = TRUE, silent = FALSE
     )
     saveRDS(f, sp_file)
   })
+beep()
+# ---
 
-scaled_fit_dir <- file.path(fit_dir, 'scaled')
-dir.create(scaled_fit_dir)
+# Scaling data
+# -------------
 trouble_fits |>
+  filter(.species == "walleye pollock", .family == "delta-gengamma") |>
   purrr::pmap(\(.region, .family, .id, .species) {
-    sp_file <- file.path(scaled_fit_dir, paste0(clean_name(.species), "-", .region, "-", .family, ".rds"))
+    scale_factor <- 10
+    sp_file <- file.path(scaled_fit_dir, paste0(clean_name(.species), "-", .region, "-", .family, '-', scale_factor, ".rds"))
     f <- get_fit(
       survey_dat = survey_dat,
-      formula = as.formula(catch_weight / 10 ~ 0 + as.factor(year)),
+      formula = as.formula(catch_weight / scale_factor ~ 0 + as.factor(year)),
       offset = "offset",
       region = .region, family = .family, species = .species,
       cutoff = cutoff, sp = .spatial, st = .spatiotemporal,
       use_priors = FALSE
     )
     saveRDS(f, sp_file)
-
   })
+beep()
 
-sable <- get_fit(
-  survey_dat = survey_dat,
-  formula = as.formula(catch_weight / 10 ~ 0 + as.factor(year)),
-  offset = "offset",
-  region = "SYN HS", family = "delta-gengamma", species = "sablefish",
-  cutoff = cutoff, sp = .spatial, st = .spatiotemporal,
-  use_priors = TRUE
-)
 
-s_pred <- get_pred(fit = sable)
-s_i <- get_index(s_pred, area = 4, bias_correct = TRUE) |>
-  mutate(fname = "sablefish-SYN HS-delta-gengamma", type = "standard") |>
-  left_join(lu_df)
+f <- list.files(scaled_fit_dir)
 
-s_i |>
-  group_by(fname) |>
-  summarise(mean_ind_cv = mean(sqrt(exp(se^2) - 1)))
+w_goa_10 <- readRDS(file.path(scaled_fit_dir, "walleye-pollock-GOA-delta-gengamma-10.rds"))
+w_bc_10 <- readRDS(file.path(scaled_fit_dir, "walleye-pollock-HS-QCS-delta-gengamma-10.rds"))
 
-pollock <- get_fit(
-  survey_dat = survey_dat,
-  formula = as.formula(catch_weight / 100 ~ 0 + as.factor(year)),
-  offset = "offset",
-  region = "SYN HS", family = "delta-gengamma", species = "walleye pollock",
-  cutoff = cutoff, sp = .spatial, st = .spatiotemporal,
-  use_priors = TRUE
-)
+w_goa_100 <- readRDS(file.path(scaled_fit_dir, "walleye-pollock-GOA-delta-gengamma-100.rds"))
+w_bc_100 <- readRDS(file.path(scaled_fit_dir, "walleye-pollock-HS-QCS-delta-gengamma-100.rds"))
+
+sanity(w_goa_10)
+sanity(w_bc_10)
+
+sanity(w_goa_100)
+sanity(w_bc_100)
 
 p_pred <- get_pred(fit = pollock)
 p_i <- get_index(p_pred, area = 4, bias_correct = TRUE) |>
@@ -268,32 +240,3 @@ p_i |>
 survey_dat |> filter(species == "walleye pollock", survey_abbrev == "SYN HS") |>
 pull(catch_weight) |> max()
 
-silvergray <- get_fit(
-  survey_dat = survey_dat,
-  formula = as.formula(catch_weight ~ 0 + as.factor(year)),
-  offset = "offset",
-  region = "SYN WCVI", family = "delta-gengamma", species = "silvergray rockfish",
-  cutoff = cutoff, sp = .spatial, st = .spatiotemporal,
-  use_priors = TRUE, prior_sd = 10,
-  control = sdmTMBcontrol(newton_loops = 3L),
-  silent = FALSE
-)
-silvergray
-
-sg_pred <- get_pred(fit = silvergray)
-sg_i <- get_index(sg_pred, area = 4, bias_correct = TRUE) |>
-  mutate(fname = "silvergray-rockfish-SYN WCVI-delta-gengamma", type = "standard") |>
-  left_join(lu_df)
-
-sg_i |>
-  group_by(fname) |>
-  summarise(mean_ind_cv = mean(sqrt(exp(se^2) - 1)))
-
-survey_dat |> filter(species == "silvergray rockfish", survey_abbrev == "SYN WCVI") |>
-pull(catch_weight) |> max()
-
-
-test <- readRDS(file.path(fit_dir, 'priors', "sablefish-SYN HS-delta-gengamma.rds"))
-test <- readRDS(file.path(fit_dir, 'priors', "sablefish-SYN HS-delta-gamma.rds"))
-test
-sable
