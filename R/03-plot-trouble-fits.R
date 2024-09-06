@@ -32,7 +32,8 @@ fit_ests <- bind_rows(
   readRDS(file.path(df_dir_priors, "fitted-estimates.rds")),
   readRDS(file.path(df_dir_scaled, "fitted-estimates.rds")),
   readRDS(file.path(df_dir, "fitted-estimates.rds")) |>
-    filter(species == "walleye pollock" & fit_family != "gengamma", region == "GOA") |>
+    filter((species == "walleye pollock" & fit_family != "gengamma" & region == "GOA") |
+          (species == "petrale sole" & fit_family != "gengamma" & region == "GOA")) |>
     mutate(scale_factor = 1)
 ) |>
   janitor::clean_names() |>
@@ -43,7 +44,8 @@ sanity_df <- bind_rows(
   readRDS(file.path(df_dir_priors, "sanity-df.rds")),
   readRDS(file.path(df_dir_scaled, "sanity-df.rds")),
   readRDS(file.path(df_dir, "sanity-df.rds")) |>
-    filter(species == "walleye pollock" & fit_family != "gengamma", region == "GOA") |>
+    filter((species == "walleye pollock" & fit_family != "gengamma" & region == "GOA") |
+          (species == "petrale sole" & fit_family != "gengamma" & region == "GOA")) |>
     mutate(scale_factor = 1)
 ) |>
   janitor::clean_names() |>
@@ -57,8 +59,10 @@ rqr_df <- bind_rows(
   readRDS(file.path(df_dir_priors, "rqr-catch-df.rds")),
   readRDS(file.path(df_dir_scaled, "rqr-catch-df.rds")),
   readRDS(file.path(df_dir, "rqr-catch-df.rds")) |>
-    filter(stringr::str_detect(fname, "walleye-pollock-(GOA)-") &
-         !stringr::str_detect(fname, "delta-gengamma")) |>
+    filter((stringr::str_detect(fname, "walleye-pollock-(GOA)-") &
+         !stringr::str_detect(fname, "delta-gengamma")) |
+         (stringr::str_detect(fname, "petrale-sole-(GOA)-") &
+         !stringr::str_detect(fname, "delta-gengamma"))) |>
     mutate(scale_factor = 1)
 ) |>
   left_join(lu_df) |>
@@ -72,8 +76,10 @@ index_df <- bind_rows(
   readRDS(file.path(df_dir_priors, "index-df.rds")),
   readRDS(file.path(df_dir_scaled, "index-df.rds")),
   readRDS(file.path(df_dir, "index-df.rds")) |>
-    filter(stringr::str_detect(fname, "walleye-pollock-(GOA)-") &
-        !stringr::str_detect(fname, "delta-gengamma")) |>
+    filter((stringr::str_detect(fname, "walleye-pollock-(GOA)-") &
+         !stringr::str_detect(fname, "delta-gengamma")) |
+         (stringr::str_detect(fname, "petrale-sole-(GOA)-") &
+         !stringr::str_detect(fname, "delta-gengamma"))) |>
     mutate(scale_factor = 1),
 ) |>
   janitor::clean_names() |>
@@ -122,17 +128,17 @@ index_species <- c("walleye pollock")
 
 pind <- summary_df |>
   select(species, region, fit_family, year, est, lwr, upr, est_q, aic_w, fname, family, mean_ind_cv, fix_type, priors, scale_factor) |>
-  filter(species %in% index_species) |>
   mutate(est = ifelse(fix_type == "Scaled catch", est * scale_factor, est),
          lwr = ifelse(fix_type == "Scaled catch", lwr * scale_factor, lwr),
          upr = ifelse(fix_type == "Scaled catch", upr * scale_factor, upr)) |>
   #mutate(family = factor(family, levels = family_levels)) |>
-  mutate(aic_w_text = paste0(round(aic_w * 100), "%")) |>
+  bind_rows()
+  mutate(aic_w_text = ifelse(is.na(aic_w), "\u2013 ", paste0(round(aic_w * 100), "%"))) |>
   group_by(species, region, family, fix_type) |>
   mutate(est = est * log(1e5), upr = upr * log(1e5), lwr = lwr * log(1e5)) |>
   ungroup() |>
   group_by(region) |>
-  mutate(ymax = max(upr),
+  mutate(ymax = max(upr, na.rm = TRUE),
          min_year = ifelse(region == "HS-QCS", min(year) + 2, min(year) + 3),
          max_year = ifelse(region == "HS-QCS", max(year) - 2, max(year) - 3)) |>
   rowwise() |>
@@ -147,10 +153,12 @@ pind <- summary_df |>
     distinct(region, fix_type, q_text)) |>
   mutate(strip_label = paste0(region, ": ", fix_type, " | Q = ", q_text))
 
-p1 <- ggplot(data = pind, aes(x = year, y = est, group = family)) +
+pind1 <- pind |> filter(species %in% index_species)
+
+p1 <- ggplot(data = pind1, aes(x = year, y = est, group = family)) +
   geom_line(aes(colour = family)) +
   geom_ribbon(aes(ymin = lwr, ymax = upr, fill = family), alpha = 0.1) +
-  geom_text(data = distinct(pind, species, family, region, aic_w_text, ymax, strip_label, .keep_all = TRUE),
+  geom_text(data = distinct(pind1, species, family, region, aic_w_text, ymax, strip_label, .keep_all = TRUE),
             aes(x = x, y = ymax, label = aic_w_text, colour = family)) +
   theme(plot.margin = margin(c(0, 0, 0, 0)),
         strip.text.x.top = element_text(hjust = 0, size = 11, margin = margin(c(0.1, 0.1, 0.14, 0.1), unit = "cm")),
@@ -170,7 +178,7 @@ p1
 
 p2 <- rqr_df |>
   filter(species %in% index_species) |>
-  left_join(pind |> distinct(fname, species, region, priors, scale_factor, fix_type, strip_label)) |>
+  left_join(pind1 |> distinct(fname, species, region, priors, scale_factor, fix_type, strip_label)) |>
   mutate(fit_family = factor(tolower(fit_family), gsub("delta-", "", family_levels))) |>
   mutate(fit_family = forcats::fct_recode(fit_family, Tweedie = "tweedie")) |>
   ggplot(aes(sample = r)) +
@@ -215,6 +223,79 @@ wrap_elements(plot = grid::textGrob("c)", rot = 0, vjust = -8.8, hjust = 0), cli
 wrap_elements(full = p1) + wrap_elements(full = g) + plot_layout(widths = c(0, 0.45, 0.8), design = d)
 
 ggsave(width = 9.372340, height = 7.031579, filename = file.path("figures", "supp", "pollock-index-rqr.png"))
+
+# ---
+# look at GOA petrale sole residuals
+# ---
+index_species <- c("petrale sole")
+
+pind2 <- pind |>
+  filter(species %in% index_species) |>
+  filter(scale_factor == 1) |>
+  group_by(species, region) |>
+  mutate(ymax = max(upr, na.rm = TRUE),
+         strip_label = paste0(stringr::str_to_title(species), " - ", region)) |>
+  ungroup()
+
+p1 <- ggplot(data = pind2, aes(x = year, y = est, group = family)) +
+  geom_line(aes(colour = family)) +
+  geom_ribbon(aes(ymin = lwr, ymax = upr, fill = family), alpha = 0.1) +
+  geom_text(data = distinct(pind2, species, family, region, aic_w_text, ymax, strip_label, .keep_all = TRUE),
+            aes(x = x, y = ymax, label = aic_w_text, colour = family)) +
+  theme(plot.margin = margin(c(0, 0, 0, 0)),
+        strip.text.x.top = element_text(hjust = 0, size = 11, margin = margin(c(0.1, 0.1, 0.14, 0.1), unit = "cm")),
+  ) +
+  scale_colour_manual(values = family_colours_no_delta) +
+  scale_fill_manual(values = family_colours_no_delta) +
+  geom_point(data = tibble(year = 2005, est = -1, family = 'gengamma'), alpha = 0) + # weird hack needed to get 0 on y-axis
+  scale_y_continuous(labels = scales::label_number(scale = 1 / 1e5),
+                     expand = expansion(mult = c(0, 0.1), add = c(-1, 0))) +
+  scale_x_continuous(expand = expansion(mult = c(0, 0), add = c(0.2, 0.2))) +
+  labs(x = "Year", y = "Biomass index (x 10<sup>5</sup>)") +
+  guides(colour = "none", fill = "none") +
+  facet_wrap(strip_label ~ ., scales = "free_y", ncol = 1) +
+  theme(plot.background = element_blank(),
+        axis.title.y = ggtext::element_markdown())
+p1
+
+p2 <- rqr_df |>
+  filter(species %in% index_species) |>
+  filter(scale_factor == 1) |>
+  left_join(pind2 |> distinct(fname, species, region, priors, scale_factor, fix_type, strip_label)) |>
+  mutate(fit_family = factor(tolower(fit_family), gsub("delta-", "", family_levels))) |>
+  mutate(fit_family = forcats::fct_recode(fit_family, Tweedie = "tweedie")) |>
+  ggplot(aes(sample = r)) +
+  geom_qq() +
+  geom_abline(intercept = 0, slope = 1) +
+  facet_grid(species ~ fit_family, switch = "y") +
+  coord_fixed(xlim = c(-4, 4), ylim = c(-5.3, 5.3)) +
+  scale_x_continuous(breaks = seq(-6, 6, by = 2), labels = seq(-6, 6, by = 2)) +
+  scale_y_continuous(breaks = seq(-6, 6, by = 2), labels = seq(-6, 6, by = 2), position = "right") +
+  labs(x = "Theoretical", y = "Sample") +
+  theme(plot.margin = margin(c(0.5, 0, 0.5, 0)),
+        strip.text.y = element_blank(),
+        strip.text.x = element_text(),
+        panel.spacing.y = unit(1.4, "lines"),
+        panel.spacing.x = unit(0, "lines")
+  )
+p2
+
+# dev.new(width = 9.372340, height = 3.063158)
+{
+  g <- ggplot_gtable(ggplot_build(p2))
+  stript <- which(grepl('strip-t', g$layout$name))
+  fills <- rep(scales::alpha(family_colours[family_levels], alpha = 0.3), 3)
+  k <- 1
+  for (i in stript) {
+    j <- which(grepl('rect', g$grobs[[i]]$grobs[[1]]$childrenOrder))
+    g$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- fills[k]
+    k <- k+1
+  }
+
+}
+
+wrap_elements(full = p1) + wrap_elements(full = g) + plot_layout(widths = c(0.45, 0.8))
+ggsave(width = 9.372340, height = 3.063158, filename = file.path("figures", "supp", "petrale-index-rqr.png"))
 
 # Compare scale of design and model
 # -----------------------------------
