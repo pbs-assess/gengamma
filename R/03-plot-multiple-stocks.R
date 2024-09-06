@@ -94,18 +94,6 @@ summary_df <-
   left_join(fit_ests, sanity_df) |>
   right_join(index_sanity)
 
-# design index
-design_df <- readRDS(here::here("data", "survey-design-index.rds"))
-design_df <- design_df |>
-  select(year, est = biomass, lwr = lowerci, upr = upperci, se = re,
-         species = species_common_name, region = survey_abbrev) |>
-  right_join(distinct(lu_df, species, region)) |>
-  mutate(family = "design")
-
-# Number of models that converged
-sanity_df |>
-  tabyl(family, all_ok)
-
 # Frequency of estimated Q
 q_ests <- fit_ests |>
   filter(family == "delta-gengamma") |>
@@ -114,6 +102,18 @@ q_ests <- fit_ests |>
   select(species, region, est_q, est_qse) |>
   arrange(est_q) |>
   mutate(q_rank = row_number())
+
+# design index
+design_df <- readRDS(here::here("data", "survey-design-index.rds"))
+design_df <- design_df |>
+  select(year, est = biomass, lwr = lowerci, upr = upperci, se = re,
+         species = species_common_name, region = survey_abbrev) |>
+  right_join(distinct(lu_df, species, region)) |>
+  mutate(family = "design")
+
+# # Number of models that converged
+# sanity_df |>
+#   tabyl(family, all_ok)
 
 fd_breaks <- pretty(range(q_ests$est_q), n = nclass.FD(q_ests$est_q), min.n = 1)
 summary_df |>
@@ -215,21 +215,10 @@ arrange(abs(diff))
 
 # Plot indices
 # -----------------
-# index_region <- "SYN QCS"
-# index_region <- "SYN HS"
-# index_region <- "SYN WCVI"
-index_region <- "HS-QCS"
 index_region <- "GOA"
-# index_region <- unique(summary_df$region)
+index_species <- c("north pacific spiny dogfish", "pacific ocean perch", "arrowtooth flounder")
 
-# index_species <- c("silvergray rockfish")
-#index_species <- c("rex sole")
-index_species <- c("north pacific spiny dogfish", "sablefish", "shortspine thornyhead")
-# index_species <- c("north pacific spiny dogfish", "lingcod", "pacific ocean perch", "arrowtooth flounder")
-# index_species <- c("pacific ocean perch")
-# index_species <- unique(summary_df$species)
-# index_species <- index_species[!grepl('silvergray', index_species)]
-
+index_species <- unique(summary_df$species)
 
 index_q_rank <- summary_df |>
   filter(family == "delta-gengamma") |>
@@ -293,14 +282,8 @@ pind <- pind |>
 p1 <- ggplot(data = pind |> filter(!(family == "tweedie" & species == "Pacific Spiny Dogfish")),
     aes(x = year, y = est, group = family)) +
   geom_line(data = pind |> filter(!(family == "tweedie" & species == "Pacific Spiny Dogfish")), aes(colour = family)) +
-  geom_line(data = pind |> filter((family == "tweedie" & species == "Pacific Spiny Dogfish")),
-    aes(colour = family), alpha = 0.4) +
   geom_ribbon(data = pind |> filter(!(family == "tweedie" & species == "Pacific Spiny Dogfish")),
     aes(ymin = lwr, ymax = upr, fill = family), alpha = 0.1) +
-  geom_ribbon(data = pind |> filter(family == "tweedie" & species == "Pacific Spiny Dogfish"),
-    aes(ymin = lwr, ymax = upr, fill = family), alpha = 0.05) +
-  geom_rect(data = pind |> filter((family == "tweedie" & species == "Pacific Spiny Dogfish")) |> distinct(),
-    aes(xmin = 1990, xmax = 2023, ymin = 115e5, ymax = 140e5), fill = "white") +
   geom_text(data = distinct(pind, species, family, region, aic_w_text, ymax, .keep_all = TRUE),
             aes(x = x, y = ymax, label = aic_w_text, colour = family)) +
   theme(plot.margin = margin(c(0, 0, 0, 0)),
@@ -322,17 +305,26 @@ p1 <- ggplot(data = pind |> filter(!(family == "tweedie" & species == "Pacific S
   #   mapping = aes(x = year, y = est, ymin = lwr, ymax = upr),
   #   size = 0.5) +
   guides(colour = "none", fill = "none") +
-  # facet_wrap(species ~ ., scales = "free_y", ncol = 1) +
-  # coord_cartesian(clip = 'off') +
-  facet_wrap_custom(species ~ ., scales = "free_y", ncol = 1,
-    scale_overrides = list(scale_override(3,
-      scale_y_continuous(limits = c(-1, 125 * 1e5),
-      labels = scales::label_number(scale = 1 / 1e5),
-      expand = expansion(mult = c(0, 0.1), add = c(-1, 0)),
-      oob = scales::squish_infinite
-      #na.value = 200 * 1e5 + (200 * 1e5 * 0.1)
-      ))))
-p1
+  facet_wrap(species ~ ., scales = "free_y", ncol = 1)
+
+# Option to deal with big tweedie on dogfish
+# p1 <- p1 +
+#   geom_line(data = pind |> filter((family == "tweedie" & species == "Pacific Spiny Dogfish")),
+#     aes(colour = family), alpha = 0.4) +
+#     geom_ribbon(data = pind |> filter(family == "tweedie" & species == "Pacific Spiny Dogfish"),
+#     aes(ymin = lwr, ymax = upr, fill = family), alpha = 0.05) +
+#   geom_rect(data = pind |> filter((family == "tweedie" & species == "Pacific Spiny Dogfish")) |> distinct(),
+#     aes(xmin = 1990, xmax = 2023, ymin = 115e5, ymax = 140e5), fill = "white") +
+#   geom_text(data = distinct(pind, species, family, region, aic_w_text, ymax, .keep_all = TRUE),
+#             aes(x = x, y = ymax, label = aic_w_text, colour = family)) +
+#   facet_wrap_custom(species ~ ., scales = "free_y", ncol = 1,
+#     scale_overrides = list(scale_override(3,
+#       scale_y_continuous(limits = c(-1, 125 * 1e5),
+#       labels = scales::label_number(scale = 1 / 1e5),
+#       expand = expansion(mult = c(0, 0.1), add = c(-1, 0)),
+#       oob = scales::squish_infinite
+#       #na.value = 200 * 1e5 + (200 * 1e5 * 0.1)
+#       ))))
 
 p2 <- rqr_df |>
   filter(species %in% index_species, region %in% index_region) |>
@@ -378,7 +370,7 @@ ggsave(width = 9.180851, height = 6.631579, filename = file.path("figures", "fig
 
 # All indices - species & regions
 # --------------------------------
-plot_all_spp_index <- function(.region, exclusion_spp, .ncol = 3, guide_rows = 1) {
+plot_all_spp_index <- function(.region, exclusion_spp, .ncol = 3) {
   # Custom labeller function
   custom_labeller <- function(df) {
     # Create a named vector with species and corresponding est_q
@@ -467,14 +459,14 @@ plot_all_spp_index <- function(.region, exclusion_spp, .ncol = 3, guide_rows = 1
     theme(
       strip.text.x.top = element_text(hjust = 0, size = 11, margin = margin(c(0.1, 0.1, 0.14, 0.1), unit = "cm")),
     ) +
-    scale_colour_manual(values = family_colours) +
-    scale_fill_manual(values = family_colours) +
+    scale_colour_manual(breaks = levels(pind$family), values = family_colours) +
+    scale_fill_manual(breaks = levels(pind$family), values = family_colours) +
     geom_point(data = tibble(year = 2003, est = -1, family = 'gengamma'), alpha = 0) + # weird hack needed to get 0 on y-axis
     scale_y_continuous(labels = scales::label_number(scale = 1 / 1e5),
                       expand = expansion(mult = c(0, 0.1), add = c(-1, 0))) +
     scale_x_continuous(expand = expansion(mult = c(0, 0), add = c(0.2, 0.2))) +
     labs(x = "Year", y = "Biomass index (x 100 000)") +
-    guides(colour = guide_legend(override.aes = list(alpha = 1, nrow = guide_rows))
+    guides(colour = guide_legend(override.aes = list(alpha = 1), byrow = TRUE)
       ) +
     facet_wrap(species ~ ., labeller = labeller(species = custom_labeller(pind)), scales = "free_y", ncol = .ncol) +
     ggtitle(gsub("SYN ", "", .region)) +
@@ -503,12 +495,12 @@ ggsave(width = 8.5, height = 9.3, filename = here::here("figures", "supp", "inde
 plot_all_spp_index(
   exclusion_spp = NULL,
   .region = "SYN WCVI",
-  .ncol = 3,
-  guide_rows = 2
-) +
-theme(legend.position = c(0.66, 0.08))
+  .ncol = 3
+) #+
+# theme(legend.position = c(0.8, 0.08),
+#       legend.spacing.y = unit(2, "cm"),
+#       legend.direction = "vertical")
 ggsave(width = 8.5, height = 9.3, filename = here::here("figures", "supp", "index-wcvi.png"))
-
 
 # Compare scale of design and model
 # -----------------------------------
