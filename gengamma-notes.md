@@ -255,3 +255,11 @@ sigma2 = 0.5
 sd / mean
 
 ```
+
+Lawless parameterisation: 
+
+$\left \{ \frac{\beta}{\Gamma k} \right \}\alpha^{-\beta k}t^{\beta k-1}exp{(-(\frac{t}{\alpha})^\beta)}, ~~~t > 0$
+
+Let $Y = log(T)$
+
+$\frac{1}{b\Gamma(k)}exp\left [ k\left(\frac{y - u}{b}\right) -e^{(y-u)/b}\right ], -\infty < y < \infty$ |
