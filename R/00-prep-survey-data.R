@@ -98,6 +98,7 @@ itis_lu <- gfsynopsis::get_spp_names() |>
   select(species_common_name, species_code, itis_tsn)
 
 # Open data base connection
+cache_data()
 load_sql_data()
 
 d <- get_data(itis_id = itis_lu$itis_tsn, regions = "afsc") |>
@@ -115,7 +116,7 @@ d2 <- d |>
   sdmTMB::add_utm_columns(c("lon_start", "lat_start"), utm_crs = 32609) |>
   mutate(offset = log(effort),
          present = ifelse(catch_weight > 0, 1, 0)) |>
-  select(common_name, itis, region, year, depth_m, X, Y, lat_start, lon_start,
+  select(common_name, itis, stratum, region, year, depth_m, X, Y, lat_start, lon_start,
          present, catch_weight, offset) |>
   left_join(itis_lu, by = c("itis" = "itis_tsn")) |>
   arrange(species_common_name) |>
@@ -132,6 +133,18 @@ goa_mean_pos_sets <- d2 |>
          prop_pos = round(mean_pos / mean_sets, digits = 2))
 
 d2 <- left_join(d2, goa_mean_pos_sets)
+
+# Get strata areas
+shp_path <- system.file("extdata/goa_strata.shp", package = "surveyjoin")
+s <- sf::read_sf(shp_path) |>
+  janitor::clean_names()
+
+s_area <- s |>
+  sf::st_drop_geometry() |>
+  group_by(stratum) |>
+  summarise(stratum_area_km2 = sum(area_km2))
+
+d2 <- left_join(d2, s_area)
 
 saveRDS(d2, here::here("data", "clean-afsc-data.rds"))
 

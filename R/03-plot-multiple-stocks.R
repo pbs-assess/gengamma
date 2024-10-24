@@ -104,11 +104,13 @@ q_ests <- fit_ests |>
   mutate(q_rank = row_number())
 
 # design index
-design_df <- readRDS(here::here("data", "survey-design-index.rds"))
+# design_df <- readRDS(here::here("data", "survey-design-index.rds"))
+design_df <- readRDS(here::here("data", "goa-design.rds"))
 design_df <- design_df |>
-  select(year, est = biomass, lwr = lowerci, upr = upperci, se = re,
-         species = species_common_name, region = survey_abbrev) |>
-  right_join(distinct(lu_df, species, region)) |>
+  mutate(region = "GOA") |>
+  select(year, est = biomass, lwr, upr,
+         species, region) |>
+  #right_join(distinct(lu_df, species, region)) |>
   mutate(family = "design")
 
 # # Number of models that converged
@@ -218,7 +220,7 @@ arrange(abs(diff))
 index_region <- "GOA"
 index_species <- c("north pacific spiny dogfish", "pacific ocean perch", "arrowtooth flounder")
 
-index_species <- unique(summary_df$species)
+#index_species <- unique(summary_df$species)
 
 index_q_rank <- summary_df |>
   filter(family == "delta-gengamma") |>
@@ -243,7 +245,8 @@ pind <- index_df |>
   mutate(family = factor(family, levels = family_levels)) |>
   mutate(aic_w_text = paste0(round(aic_w * 100), "%")) |>
   group_by(species, region, family) |>
-  mutate(est = est * log(1e5), upr = upr * log(1e5), lwr = lwr * log(1e5)) |>
+  #mutate(est = est * log(1e5), upr = upr * log(1e5), lwr = lwr * log(1e5)) |> # this was for BC data because offset was scaled by log(1e5)
+  mutate(est = est * 1e2, upr = upr * 1e2, lwr = lwr * 1e2) |> # needed because effort is in ha, but grid is in km2
   mutate(geo_mean = exp(mean(log(est)))) |>
   mutate(
     est_scaled = est,
@@ -292,10 +295,10 @@ p1 <- ggplot(data = pind |> filter(!(family == "tweedie" & species == "Pacific S
   scale_colour_manual(values = family_colours) +
   scale_fill_manual(values = family_colours) +
   geom_point(data = tibble(year = 2005, est = -1, family = 'gengamma'), alpha = 0) + # weird hack needed to get 0 on y-axis
-  scale_y_continuous(labels = scales::label_number(scale = 1 / 1e5),
+  scale_y_continuous(labels = scales::label_number(scale = 1 / 1e7),
                      expand = expansion(mult = c(0, 0.1), add = c(-1, 0))) +
   scale_x_continuous(expand = expansion(mult = c(0, 0), add = c(0.2, 0.2))) +
-  labs(x = "Year", y = "Biomass index (x 100 000)") +
+  labs(x = "Year", y = "Biomass index (x 10 000 000)") +
   # geom_pointrange(
   #   data = design_df |>
   #     filter(species %in% index_species, region %in% index_region) |>
@@ -308,23 +311,23 @@ p1 <- ggplot(data = pind |> filter(!(family == "tweedie" & species == "Pacific S
   facet_wrap(species ~ ., scales = "free_y", ncol = 1)
 
 # Option to deal with big tweedie on dogfish
-# p1 <- p1 +
-#   geom_line(data = pind |> filter((family == "tweedie" & species == "Pacific Spiny Dogfish")),
-#     aes(colour = family), alpha = 0.4) +
-#     geom_ribbon(data = pind |> filter(family == "tweedie" & species == "Pacific Spiny Dogfish"),
-#     aes(ymin = lwr, ymax = upr, fill = family), alpha = 0.05) +
-#   geom_rect(data = pind |> filter((family == "tweedie" & species == "Pacific Spiny Dogfish")) |> distinct(),
-#     aes(xmin = 1990, xmax = 2023, ymin = 115e5, ymax = 140e5), fill = "white") +
-#   geom_text(data = distinct(pind, species, family, region, aic_w_text, ymax, .keep_all = TRUE),
-#             aes(x = x, y = ymax, label = aic_w_text, colour = family)) +
-#   facet_wrap_custom(species ~ ., scales = "free_y", ncol = 1,
-#     scale_overrides = list(scale_override(3,
-#       scale_y_continuous(limits = c(-1, 125 * 1e5),
-#       labels = scales::label_number(scale = 1 / 1e5),
-#       expand = expansion(mult = c(0, 0.1), add = c(-1, 0)),
-#       oob = scales::squish_infinite
-#       #na.value = 200 * 1e5 + (200 * 1e5 * 0.1)
-#       ))))
+p1 <- p1 +
+  geom_line(data = pind |> filter((family == "tweedie" & species == "Pacific Spiny Dogfish")),
+    aes(colour = family), alpha = 0.4) +
+    geom_ribbon(data = pind |> filter(family == "tweedie" & species == "Pacific Spiny Dogfish"),
+    aes(ymin = lwr, ymax = upr, fill = family), alpha = 0.05) +
+  geom_rect(data = pind |> filter((family == "tweedie" & species == "Pacific Spiny Dogfish")) |> distinct(),
+    aes(xmin = 1990, xmax = 2023, ymin = 104e6, ymax = 120e6), fill = "white") +
+  geom_text(data = distinct(pind, species, family, region, aic_w_text, ymax, .keep_all = TRUE),
+            aes(x = x, y = ymax, label = aic_w_text, colour = family)) +
+  facet_wrap_custom(species ~ ., scales = "free_y", ncol = 1,
+    scale_overrides = list(scale_override(3,
+      scale_y_continuous(limits = c(-1, 10.75 * 1e7),
+      labels = scales::label_number(scale = 1 / 1e7),
+      expand = expansion(mult = c(0, 0.1), add = c(-1, 0)),
+      oob = scales::squish_infinite
+      #na.value = 200 * 1e5 + (200 * 1e5 * 0.1)
+      ))))
 
 p2 <- rqr_df |>
   filter(species %in% index_species, region %in% index_region) |>
@@ -559,7 +562,6 @@ p3 + wrap_elements(full = g) + plot_layout(widths = c(0.4, 0.8))
 
 # Get ratio of model-based index / design-based index - like surprising scale paper
 # ------------------------------
-# doesn't use the geometric mean?
 dm_ratio <- left_join(
   design_df |>
     group_by(species, region) |>
@@ -567,17 +569,31 @@ dm_ratio <- left_join(
     distinct(species, region, B),
   index_df |>
     group_by(species, fit_family, region) |>
-    mutate(I = mean(est * log(1e5)) / n()) |>
+    mutate(I = mean(est * 1e2) / n()) |> # need to convert from kg / hectare to kg / km2
     distinct(species, region, I)
 ) |>
   mutate(ratio = I / B)
 
-dm_ratio |> filter(species %in% index_species, region %in% index_region)
+dm_ratio |>
+  ungroup() |>
+  filter(species %in% index_species, region %in% index_region) |>
+  arrange(species, ratio) |>
+  left_join(distinct(lu_df, family, fit_family)) |>
+  select(species, family, ratio)
 
-ggplot(data = dm_ratio, aes(x = log(ratio))) +
-  geom_histogram() +
-  geom_vline(xintercept = 0) +
-  facet_grid(. ~ fit_family)
+dm_ratio |>
+  mutate(species = factor(species, levels = index_species)) |>
+  left_join(distinct(lu_df, family, fit_family)) |>
+ggplot(data = _, aes(x = ratio, y = species, colour = family, shape = family)) +
+  geom_point(size = 4) +
+  scale_colour_manual(values = family_colours) +
+  scale_shape_manual(values = family_shapes) +
+  geom_vline(xintercept = 1)
+
+# ggplot(data = dm_ratio, aes(x = ratio)) +
+#   geom_histogram() +
+#   geom_vline(xintercept = 0) +
+#   facet_grid(. ~ fit_family)
 
 
 
