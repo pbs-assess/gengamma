@@ -114,10 +114,11 @@ no_catch_years <- d |>
 d2 <- d |>
   anti_join(no_catch_years |> select(-annual_catch)) |>
   sdmTMB::add_utm_columns(c("lon_start", "lat_start"), utm_crs = 32609) |>
-  mutate(offset = log(effort),
+  mutate(effort_km2 = effort * 0.01) |>
+  mutate(offset = log(effort_km2),
          present = ifelse(catch_weight > 0, 1, 0)) |>
   select(common_name, itis, stratum, region, year, depth_m, X, Y, lat_start, lon_start,
-         present, catch_weight, offset) |>
+         present, catch_weight, effort, offset) |>
   left_join(itis_lu, by = c("itis" = "itis_tsn")) |>
   arrange(species_common_name) |>
   select(-common_name) |>
@@ -134,6 +135,8 @@ goa_mean_pos_sets <- d2 |>
 
 d2 <- left_join(d2, goa_mean_pos_sets)
 
+saveRDS(d2, here::here("data", "clean-afsc-data.rds"))
+
 # Get strata areas
 shp_path <- system.file("extdata/goa_strata.shp", package = "surveyjoin")
 s <- sf::read_sf(shp_path) |>
@@ -142,11 +145,73 @@ s <- sf::read_sf(shp_path) |>
 s_area <- s |>
   sf::st_drop_geometry() |>
   group_by(stratum) |>
-  summarise(stratum_area_km2 = sum(area_km2))
+  summarise(area_km2 = sum(area_km2))
 
-d2 <- left_join(d2, s_area)
+# goa_design <- d2 |>
+#   left_join(s_area) |>
+#   mutate(cpue_tow = catch_weight / (effort * 0.01)) |> # convert to kg / km2
+#   group_by(species, year, stratum, area_km2) |>
+#   summarise(c_ti = sum(cpue_tow) / n(), n_strata = n()) |>
+#   group_by(species, year) |>
+#   mutate(b_ti = sum(c_ti * area_km2)) |>
+#   distinct(species, year, b_ti) |>
+#   ungroup()
 
-saveRDS(d2, here::here("data", "clean-afsc-data.rds"))
+
+# Get bootstrap estimates:
+# calculate design-based biomass estimate from output of get_survey_sets()
+calc_bio <- function(dat, i = seq_len(nrow(dat))) {
+  dat[i, ] |>
+    group_by(year, area_km2, stratum) |>
+    summarise(density = mean(catch_weight / (effort * 0.01)), .groups = "drop_last") |>
+    group_by(year) |>
+    summarise(biomass = sum(density * area_km2), .groups = "drop_last") |>
+    pull(biomass)
+}
+
+boot_one_year <- function(x, reps) {
+  b <- boot::boot(x, statistic = calc_bio, strata = x$stratum, R = reps)
+  suppressWarnings(bci <- boot::boot.ci(b, type = "perc"))
+  tibble::tibble(
+    species = unique(b$data$species),
+    index = mean(b$t),
+    median_boot = median(b$t),
+    lwr = bci$percent[[4]],
+    upr = bci$percent[[5]],
+    cv = sd(b$t) / mean(b$t),
+    biomass = calc_bio(x)
+  )
+}
+
+boot_all_years <- function(dat, reps) {
+  out <- dat |>
+    split(dat$year) |>
+    purrr::map_dfr(boot_one_year, reps = reps, .id = "year")
+  out$year <- as.numeric(out$year)
+  out
+}
+
+boot_all_years_parallel <- function(dat, reps) {
+  out <- dat |>
+    split(dat$year) |>
+    furrr::future_map_dfr(boot_one_year, reps = reps, .id = "year",
+      .options = furrr::furrr_options(seed = TRUE))
+  out$year <- as.numeric(out$year)
+  out
+}
+
+# Slow, so only do the three focal species
+d_species <- c("north pacific spiny dogfish", "pacific ocean perch", "arrowtooth flounder")
+
+goa_design_boot <- filter(d2, species %in% d_species) |>
+  left_join(s_area) |>
+  mutate(density = catch_weight / (effort * 0.01)) |> # convert to kg / km2
+  group_split(species) |>
+  purrr::map_df(\(x) boot_all_years_parallel(x, reps = 1000))
+beepr::beep()
+
+saveRDS(goa_design_boot, here::here("data", "goa-design.rds"))
+
 
 # ------------------------------------------------------------------------------
 # What proportion of grids are surveyed in a given year?
