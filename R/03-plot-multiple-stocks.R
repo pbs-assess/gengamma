@@ -373,7 +373,7 @@ ggsave(width = 9.180851, height = 6.631579, filename = file.path("figures", "fig
 
 # All indices - species & regions
 # --------------------------------
-plot_all_spp_index <- function(.region, exclusion_spp, .ncol = 3) {
+plot_all_spp_index <- function(.region, exclusion_spp, drop_tweedie = FALSE, .ncol = 3) {
   # Custom labeller function
   custom_labeller <- function(df) {
     # Create a named vector with species and corresponding est_q
@@ -445,15 +445,21 @@ plot_all_spp_index <- function(.region, exclusion_spp, .ncol = 3) {
     mutate(species = forcats::fct_reorder(species, rev(est_q))) |>
     mutate(family = forcats::fct_recode(family, "Tweedie" = "tweedie"))
 
+  if (drop_tweedie) {
+    pind <- filter(pind, family != "Tweedie") |>
+      mutate(x = ifelse(family == "delta-gamma", ((min(x) + max(x)) / 2), x))
+  }
+
   ggplot(data = pind, aes(x = year, y = est, group = family, colour = family, fill = family)) +
+    facet_wrap(species ~ ., labeller = labeller(species = custom_labeller(pind)), scales = "free_y", ncol = .ncol) +
     geom_line(data = pind |> filter(!(family == "Tweedie" & aic_w < 0.1)), aes(colour = family)) +
     geom_ribbon(data = pind |> filter(!(family == "Tweedie" & aic_w < 0.1)),
       aes(ymin = lwr, ymax = upr, fill = family), colour = NA, alpha = 0.1) +
-    geom_line(data = pind |> filter(family == "Tweedie") |> distinct(species, family, x, ymax),
-      aes(x = x, y = ymax), alpha = 0) +
-    geom_ribbon(data = pind |> filter(family == "Tweedie") |> distinct(species, family, x, ymax),
-      aes(x = x, y = ymax, ymin = ymax, ymax = ymax), colour = NA, alpha = 0) +
-    # geom_line(data = pind, aes(colour = family)) +
+    # geom_line(data = pind |> filter(family == "Tweedie") |> distinct(species, family, x, ymax),
+    #   aes(x = x, y = ymax), alpha = 0) +
+    # geom_ribbon(data = pind |> filter(family == "Tweedie") |> distinct(species, family, x, ymax),
+    #   aes(x = x, y = ymax, ymin = ymax, ymax = ymax), colour = NA, alpha = 0) +
+    # # geom_line(data = pind, aes(colour = family)) +
     # geom_ribbon(data = pind,
     #   aes(ymin = lwr, ymax = upr, fill = family), alpha = 0.1) +
     geom_text(data = distinct(pind, species, family, region, aic_w_text, ymax, .keep_all = TRUE),
@@ -471,7 +477,6 @@ plot_all_spp_index <- function(.region, exclusion_spp, .ncol = 3) {
     labs(x = "Year", y = "Biomass index (x 100 000)") +
     guides(colour = guide_legend(override.aes = list(alpha = 1), byrow = TRUE)
       ) +
-    facet_wrap(species ~ ., labeller = labeller(species = custom_labeller(pind)), scales = "free_y", ncol = .ncol) +
     ggtitle(gsub("SYN ", "", .region)) +
     theme(plot.title = element_text(size = 12, face = "bold"),
           legend.title = element_blank(),
@@ -482,6 +487,7 @@ plot_all_spp_index <- function(.region, exclusion_spp, .ncol = 3) {
 plot_all_spp_index(
   exclusion_spp =  c("Petrale Sole", "Walleye Pollock"),
   .region = "GOA",
+  drop_tweedie = TRUE,
   .ncol = 3
 )
 ggsave(width = 8.5, height = 9.3, filename = here::here("figures", "supp", "index-goa.png"))
@@ -489,6 +495,7 @@ ggsave(width = 8.5, height = 9.3, filename = here::here("figures", "supp", "inde
 plot_all_spp_index(
   exclusion_spp =  c("Walleye Pollock"),
   .region = "HS-QCS",
+  drop_tweedie = TRUE,
   .ncol = 3
 ) +
   theme(legend.position = c(0.66, 0.08),
