@@ -6,6 +6,14 @@ family_colours <- c(
   "delta-gengamma" ="#2271B2" # 'barbie pink'
 )
 
+family_shapes <- c(
+  "tweedie" =  3, # plus
+  "Tweedie" =  3, # plus
+  "delta-lognormal" = 17, # triangle
+  "delta-gamma" = 15, # square
+  "delta-gengamma" = 19 # point
+)
+
 family_colours_no_delta <- family_colours
 names(family_colours_no_delta) <- gsub("delta-", "", names(family_colours))
 

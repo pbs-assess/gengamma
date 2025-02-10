@@ -122,7 +122,7 @@ sim_fit <- function(predictor_dat, mesh_sim,
   tw_sim <- sampled |>
     mutate(
       family = "tweedie",
-      phi = get_phi(family = "tweedie", cv = cv, p = tweedie_p, mu = exp(b0_tw)), # Fix of tweedie phi for given mu
+      phi = get_phi(family = "tweedie", cv = cv, p = tweedie_p, mu = exp(b0_tw)), # set tweedie phi for given mu
       tweedie_p = tweedie_p,
       catch_observed = fishMod::rTweedie(n(), mu = mu * encounter_mu, phi = phi, p = tweedie_p) #
     ) |>
@@ -407,12 +407,36 @@ saveRDS(rqr_df, file.path(here::here("data-outputs", "cross-sim", paste0('rqr-',
 # Self check on gg Q estimation
 # ------------------------------------------------------------------------------
 # Slow; also note that sanity check fails if Q is very negative, e.g., I tested with Q = -5
+# FIXME This is currently broken
 run_self_check <- FALSE
 if (run_self_check) {
   local({
     .gamma_q <- get_phi(family = "gengamma-gamma-case", cv = cv, mu = 1)
     Q_values <- c(-5, -2, -1, -0.5, -0.001, -0.0001, -0.00001, 0.00001, 0.0001, 0.001, 0.5, .gamma_q, 1, 2, 5)
     gengamma_phi <- map_dbl(Q_values, ~ get_phi(family = "gengamma", cv = cv, mu = 1, Q = .x))
+
+    # Generate dataframe of true mu's for 2nd lp
+    sim_dat <- sdmTMB_simulate(
+      formula = ~1,
+      data = predictor_dat,
+      time = "year",
+      mesh = mesh_sim,
+      family = lognormal(link = "log"), # Delta families are not supported. Instead, simulate the two component models separately and combine.
+      range = 0.5, # Parameter that controls the decay of spatial correlation. If length 2, the spatial and spatiotemporal ranges will be unique.
+      phi = get_phi(family = "lognormal", cv = cv), # Observation error scale parameter (e.g., SD in Gaussian).
+      sigma_E = 0, # SD of spatiotemporal process (Epsilon).
+      sigma_O = sigma_O, # SD of spatial process (Omega)
+      B = c(b0)
+    ) |>
+      mutate(
+        family = "lognormal", link = "log", cv = cv,
+        sigma_O = sigma_O, b0 = b0, Q = NA
+      ) |>
+      tibble::as_tibble()
+
+    sample_size <- 1000
+    sampled <- sample_n(sim_dat, size = sample_size)
+    sampled_mesh <- make_mesh(sampled, c("X", "Y"), cutoff = 0.1)
 
     gg_sim <- purrr::map2_dfr(Q_values, gengamma_phi, \(.Q, .phi) {
       sampled |>
@@ -439,4 +463,5 @@ if (run_self_check) {
   })
   beep()
 }
+Q_ests
 # ------------------------------------------------------------------------------

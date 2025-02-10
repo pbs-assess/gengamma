@@ -15,15 +15,6 @@ family_levels <- c(
   #"delta-lognormal-poisson-link", "delta-gamma-poisson-link", "delta-gengamma-poisson-link"
 )
 
-family_shapes <- c(
-  "tweedie" =  3, # plus
-  "Tweedie" =  3, # plus
-  "delta-lognormal" = 17, # triangle
-  "delta-gamma" = 15, # square
-  "delta-gengamma" = 19 # point
-)
-
-
 # https://mk.bcgsc.ca/colorblind/palettes/8.color.blindness.palette.txt
 # family_colours <- c(
 #   "tweedie" = "#F748A5", # 'barbie pink'
@@ -512,59 +503,59 @@ plot_all_spp_index(
 #       legend.direction = "vertical")
 ggsave(width = 8.5, height = 9.3, filename = here::here("figures", "supp", "index-wcvi.png"))
 
-# Compare scale of design and model
+# Compare scale of design and model # TODO: I think I can delete this section
 # -----------------------------------
 # Could scale them all to the design based index - and then you would see bias based how far
 # off from 1
-p3 <- ggplot(data = pind, aes(x = year, y = est, group = family)) +
-  geom_line(aes(colour = family)) +
-  geom_pointrange(data = design_df |> filter(species %in% index_species, region %in% index_region) |>
-    mutate(species = stringr::str_to_title(species)),
-    mapping = aes(x = year, ymin = lwr / 1e5, ymax = upr)) +
-  geom_ribbon(aes(ymin = lwr, ymax = upr, fill = family), alpha = 0.1) +
-  geom_text(data = distinct(pind, species, family, region, aic_w_text, ymax, .keep_all = TRUE),
-    aes(x = x, y = ymax, label = aic_w_text, colour = family)) +
-  scale_y_continuous() +
-  facet_grid(species ~ region, scales = "free_y") +
-  scale_colour_manual(values = family_colours) +
-  scale_fill_manual(values = family_colours) +
-  theme(legend.position = c(2010, 1e5))
+# p3 <- ggplot(data = pind, aes(x = year, y = est, group = family)) +
+#   geom_line(aes(colour = family)) +
+#   geom_pointrange(data = design_df |> filter(species %in% index_species, region %in% index_region) |>
+#     mutate(species = stringr::str_to_title(species)),
+#     mapping = aes(x = year, ymin = lwr / 1e5, ymax = upr)) +
+#   geom_ribbon(aes(ymin = lwr, ymax = upr, fill = family), alpha = 0.1) +
+#   geom_text(data = distinct(pind, species, family, region, aic_w_text, ymax, .keep_all = TRUE),
+#     aes(x = x, y = ymax, label = aic_w_text, colour = family)) +
+#   scale_y_continuous() +
+#   facet_grid(species ~ region, scales = "free_y") +
+#   scale_colour_manual(values = family_colours) +
+#   scale_fill_manual(values = family_colours) +
+#   theme(legend.position = c(2010, 1e5))
 
-p4 <- rqr_df |>
-  filter(species %in% index_species, region %in% index_region) |>
-  left_join(select(aic_df, species, family, fname, q_rank)) |>
-  mutate(fit_family = factor(tolower(fit_family), gsub("delta-", "", family_levels))) |>
-  mutate(fit_family = forcats::fct_recode(fit_family, Tweedie = "tweedie")) |>
-  mutate(species = factor(species)) |>
-  mutate(species = forcats::fct_reorder(species, order(q_rank, decreasing = TRUE))) |>
-  ggplot(aes(sample = r)) +
-  geom_qq() +
-  geom_abline(intercept = 0, slope = 1) +
-  facet_grid(species ~ fit_family, switch = "y") +
-  #facet_wrap(species ~ fit_family, labeller = labeller(.multi_line = FALSE)) +
-  coord_fixed(xlim = c(-4, 4), ylim = c(-5.3, 5.3)) +
-  #lims(x = c(-6, 6), y = c(-6, 6)) +
-  scale_x_continuous(breaks = seq(-6, 6, by = 2), labels = seq(-6, 6, by = 2)) +
-  scale_y_continuous(breaks = seq(-6, 6, by = 2), labels = seq(-6, 6, by = 2), position = "right",) +
-  labs(x = "Theoretical", y = "Sample") +
-  theme(plot.margin = margin(c(0.5, 0, 0.5, 0.5)),
-        strip.text.y = element_blank(),
-        strip.text.x = element_text(),
-        panel.spacing.y = unit(1.6, "lines"),
-        panel.spacing.x = unit(0, "lines")
-  )
+# p4 <- rqr_df |>
+#   filter(species %in% index_species, region %in% index_region) |>
+#   left_join(select(aic_df, species, family, fname, q_rank)) |>
+#   mutate(fit_family = factor(tolower(fit_family), gsub("delta-", "", family_levels))) |>
+#   mutate(fit_family = forcats::fct_recode(fit_family, Tweedie = "tweedie")) |>
+#   mutate(species = factor(species)) |>
+#   mutate(species = forcats::fct_reorder(species, order(q_rank, decreasing = TRUE))) |>
+#   ggplot(aes(sample = r)) +
+#   geom_qq() +
+#   geom_abline(intercept = 0, slope = 1) +
+#   facet_grid(species ~ fit_family, switch = "y") +
+#   #facet_wrap(species ~ fit_family, labeller = labeller(.multi_line = FALSE)) +
+#   coord_fixed(xlim = c(-4, 4), ylim = c(-5.3, 5.3)) +
+#   #lims(x = c(-6, 6), y = c(-6, 6)) +
+#   scale_x_continuous(breaks = seq(-6, 6, by = 2), labels = seq(-6, 6, by = 2)) +
+#   scale_y_continuous(breaks = seq(-6, 6, by = 2), labels = seq(-6, 6, by = 2), position = "right",) +
+#   labs(x = "Theoretical", y = "Sample") +
+#   theme(plot.margin = margin(c(0.5, 0, 0.5, 0.5)),
+#         strip.text.y = element_blank(),
+#         strip.text.x = element_text(),
+#         panel.spacing.y = unit(1.6, "lines"),
+#         panel.spacing.x = unit(0, "lines")
+#   )
 
-# see: https://github.com/tidyverse/ggplot2/issues/2096#issuecomment-389825118
-g <- ggplot_gtable(ggplot_build(p4))
-stript <- which(grepl('strip-t', g$layout$name))
-fills <- rep(scales::alpha(family_colours[family_levels], alpha = 0.3), 3)
-k <- 1
-for (i in stript) {
-  j <- which(grepl('rect', g$grobs[[i]]$grobs[[1]]$childrenOrder))
-  g$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- fills[k]
-  k <- k+1
-}
-p3 + wrap_elements(full = g) + plot_layout(widths = c(0.4, 0.8))
+# # see: https://github.com/tidyverse/ggplot2/issues/2096#issuecomment-389825118
+# g <- ggplot_gtable(ggplot_build(p4))
+# stript <- which(grepl('strip-t', g$layout$name))
+# fills <- rep(scales::alpha(family_colours[family_levels], alpha = 0.3), 3)
+# k <- 1
+# for (i in stript) {
+#   j <- which(grepl('rect', g$grobs[[i]]$grobs[[1]]$childrenOrder))
+#   g$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- fills[k]
+#   k <- k+1
+# }
+# p3 + wrap_elements(full = g) + plot_layout(widths = c(0.4, 0.8))
 
 
 # Get ratio of model-based index / design-based index - like surprising scale paper
@@ -579,15 +570,19 @@ dm_ratio <- left_join(
     mutate(I = mean(est * 1e2) / n()) |> # need to convert from kg / hectare to kg / km2
     distinct(species, region, I)
 ) |>
-  mutate(ratio = I / B)
+  mutate(ratio = I / B) |>
+  mutate(lr = log(ratio))
 
 dm_ratio |>
   ungroup() |>
   filter(species %in% index_species, region %in% index_region) |>
-  arrange(species, ratio) |>
   left_join(distinct(lu_df, family, fit_family)) |>
-  select(species, family, ratio)
+  mutate(diff = round(abs(1 - ratio), digits = 2)) |>
+  select(species, family, ratio, diff) |>
+  arrange(species, diff) |>
+  print(n = 56)
 
+# raw ratio
 dm_ratio |>
   mutate(species = factor(species, levels = index_species)) |>
   left_join(distinct(lu_df, family, fit_family)) |>
@@ -596,12 +591,26 @@ ggplot(data = _, aes(x = ratio, y = species, colour = family, shape = family)) +
   scale_colour_manual(values = family_colours) +
   scale_shape_manual(values = family_shapes) +
   geom_vline(xintercept = 1)
+ggsave('figures/supp/model-design-ratio.png')
 
-# ggplot(data = dm_ratio, aes(x = ratio)) +
-#   geom_histogram() +
-#   geom_vline(xintercept = 0) +
-#   facet_grid(. ~ fit_family)
+# log ratio
+dm_ratio |>
+  mutate(species = factor(species, levels = index_species)) |>
+  left_join(distinct(lu_df, family, fit_family)) |>
+ggplot(data = _, aes(x = log(ratio), y = species, colour = family, shape = family)) +
+  geom_point(size = 4) +
+  scale_colour_manual(values = family_colours) +
+  scale_shape_manual(values = family_shapes) +
+  geom_vline(xintercept = 0)
+ggsave('figures/supp/model-design-log-ratio.png')
 
+
+dm_ratio |>
+  ungroup() |>
+  filter(species %in% index_species, region %in% index_region) |>
+  arrange(species, lr) |>
+  left_join(distinct(lu_df, family, fit_family)) |>
+  select(species, family, lr)
 
 
 # ------------------------------------------------------------------------------

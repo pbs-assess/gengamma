@@ -203,7 +203,8 @@ boot_all_years_parallel <- function(dat, reps) {
 # Slow, so only do the three focal species
 d_species <- c("north pacific spiny dogfish", "pacific ocean perch", "arrowtooth flounder")
 
-goa_design_boot <- filter(d2, species %in% d_species) |>
+goa_design_boot <- d2 |>
+  #filter(d2, species %in% d_species) |>
   left_join(s_area) |>
   mutate(density = catch_weight / (effort * 0.01)) |> # convert to kg / km2
   group_split(species) |>

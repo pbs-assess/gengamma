@@ -403,17 +403,19 @@ left_join(dr_df, fit_df) |>
 #   purrr::map_dfr(readRDS)
 fit_df <- readRDS(file.path(fit_dir, "cv0.8-sigmao1-nreps200.rds"))
 
-fit_df |>
+# fit_df |>
+index_df |>
   # filter(sim_family == "delta-gengamma", fit_family == "gengamma") |>
   group_by(sim_family, Q, fit_family) |>
   summarise()
 
-mean_ests <- fit_df |>
+mean_ests <- index_df |>
   group_by(sim_family, Q, fit_family) |>
-  summarise_at(vars(est_Q:std.error_tweedie_p), mean, na.rm = TRUE, groups = ".drop")
+  summarise(est_q)
+  # summarise_at(vars(est_Q:std.error_tweedie_p), mean, na.rm = TRUE, groups = ".drop")
 
 # fit_df |>
-mean_ests |>
+index_df |>
   filter(sim_family == "delta-gengamma", fit_family == "gengamma") |>
   filter(!(Q %in% c(-5, 5))) |>
   select(sim_family:est_Qse) |>
