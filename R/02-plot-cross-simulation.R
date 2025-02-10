@@ -23,7 +23,7 @@ plot_violin <- function(.data, .x, .ncol = NULL,
     scale_color_manual(values = family_colours_no_delta) +
     facet_wrap(~title, ncol = .ncol) +
     guides(colour = "none") +
-    theme(#axis.title.y = element_blank(),
+    theme(
           strip.text.x = ggtext::element_markdown())
 }
 
@@ -54,6 +54,10 @@ filter_plot_df <- function(x, apply_filter = TRUE) {
       # filter(cv == 0.95, sigma_O == 1)
   }
   x
+}
+
+filter_supp <- function(x) {
+  x |> filter(cv == 0.95, sigma_O == 1, Q %in% c(-2, -1, -0.5, -0.001, 0.001, 0.5, 0.95, 1, 2))
 }
 
 out_dir <- here::here("data-outputs", "cross-sim")
@@ -195,7 +199,7 @@ aic_weight <- main_text_df |>
   plot_violin(.x = aic_w, .ncol = 5,
     .scale = "width",
     .summary_fun = "median") +
-  scale_x_continuous(breaks = c(0, 0.25, 0.5, 0.75, 1), labels = c(0, 0.25, 0.5, 0.75, 1)) +
+  scale_x_continuous(breaks = c(0, 0.25, 0.5, 0.75, 1), labels = c(0, 25, 50, 75, 100)) +
   guides(x = guide_axis(title = "AIC weight (%)"),
     x.sec = guide_none(title = "Simulated"),
     y = guide_axis(title = "Fitted")
@@ -232,36 +236,36 @@ re <- plot_df |>
 re
 ggsave(re, filename = file.path(fig_dir, paste0("re", tag, ".png")), width = 11, height = 2.5)
 
-aic_weight_hist <-
-  plot_df |>
-  filter_plot_df(apply_filter = apply_filter) |>
-  ggplot() +
-  geom_histogram(aes(x = aic_w)) +
-  scale_x_continuous(labels = scales::label_percent(suffix = "")) +
-  facet_grid(fit_family ~ title) +
-  xlab("AIC Weight (%)")
-aic_weight_hist
+# aic_weight_hist <-
+#   plot_df |>
+#   filter_plot_df(apply_filter = apply_filter) |>
+#   ggplot() +
+#   geom_histogram(aes(x = aic_w)) +
+#   scale_x_continuous(labels = scales::label_percent(suffix = "")) +
+#   facet_grid(fit_family ~ title) +
+#   xlab("AIC Weight (%)")
+# aic_weight_hist
 
-aic_weight <-
+aic_weight_supp <-
   plot_df |>
-  filter_plot_df(apply_filter = apply_filter) |>
-  ggplot(aes(x = aic_w, y = fit_family)) +
-  geom_violin(aes(colour = fit_family), scale = "width") +
-  stat_summary(fun = mean, geom = "point", colour = "black") +
-  geom_vline(xintercept = 0, linetype = "dashed") +
-  scale_color_brewer(values = family_colours) +
-  scale_x_continuous(labels = scales::label_percent(suffix = "")) +
-  facet_wrap(~title, ncol = 10) +
-  guides(colour = "none") +
-  labs(x = "AIC Weight (%)", y = "Fit family") +
-  ggtitle(paste0("AIC weight ", tag))
-aic_weight
+  filter_supp() |>
+  plot_violin(.x = aic_w, .ncol = 10,
+    .scale = "width",
+    .summary_fun = "median") +
+  scale_x_continuous(breaks = c(0, 0.25, 0.5, 0.75, 1), labels = c(0, 25, 50, 75, 100)) +
+  guides(x = guide_axis(title = "AIC weight (%)"),
+    x.sec = guide_none(title = "Simulated"),
+    y = guide_axis(title = "Fitted")
+  ) +
+  theme(axis.title.x = element_text(vjust = -1, size = 14),
+        axis.title.x.top = element_text(vjust = 1, size = 12))
+aic_weight_supp
 
-ggsave(filename = file.path(fig_dir, paste0("aic_weight", tag, ".png")), width = 11, height = 2.5)
+ggsave(filename = file.path("figures", "supp", paste0("aic_weight", tag, ".png")), width = 11, height = 2.5)
 
 ci_coverage <-
   plot_df |>
-  filter_plot_df(apply_filter = apply_filter) |>
+  filter_supp() |>
   group_by(title, fit_family, Q, cv, sigma_O, sim_family) |>
   summarise(
     n_sanity_pass = n(),
@@ -269,16 +273,20 @@ ci_coverage <-
   ) |>
   mutate(xtitle = paste0("cv = ", cv, "\nsigma_O = ", sigma_O)) |>
   plot_linedot(.x = prop_covered, .ncol = 10, xint = 0.5) +
-  scale_x_continuous(labels = scales::label_number(accuracy = 0.1)) +
-  # facet_grid(xtitle ~ title) +
-  labs(x = "Coverage", y = "Fit family") +
-  ggtitle(paste0("50% Confidence interval coverage ", tag))
+  scale_x_continuous(breaks = c(0, 0.25, 0.5), labels = c(0, 0.25, 0.5)) +
+  guides(x = guide_axis(title = "50% Confidence interval coverage"),
+    x.sec = guide_none(title = "Simulated"),
+    y = guide_axis(title = "Fitted")
+  ) +
+  theme(axis.title.x = element_text(vjust = -1, size = 14),
+        axis.title.x.top = element_text(vjust = 1, size = 12),
+        axis.text.x = element_text(size = 10))
 ci_coverage
-ggsave(filename = file.path(fig_dir, paste0("ci-coverage", tag, ".png")), width = 11, height = 2.5)
+ggsave(filename = file.path("figures", "supp", paste0("ci-coverage", tag, ".png")), width = 11, height = 2.5)
 
 ci_width <-
   plot_df |>
-  filter_plot_df(apply_filter = apply_filter) |>
+  filter_supp() |>
   plot_violin(.x = ci_width_50, .ncol = 10) +
   scale_x_continuous(trans = "log10") +
   #facet_grid(xtitle ~ title) +
