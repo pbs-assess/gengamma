@@ -62,7 +62,7 @@ library(future)
 # pluck(docv, "spatial_list", 1) |> as.list()
 
 survey_dat <- readRDS(here::here("data-outputs", "data-used.rds"))
-survey_dat <- readRDS("~/Downloads/data-used.rds")
+# survey_dat <- readRDS("~/Downloads/data-used.rds")
 survey_dat <- filter(survey_dat, !(region == "GOA" & species == "petrale sole"))
 unique(survey_dat$species)
 unique(survey_dat$region)
