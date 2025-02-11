@@ -1,5 +1,6 @@
 library(dplyr)
 library(sdmTMB) # pak::pkg_install("pbs-assess/sdmTMB")
+library(future)
 
 source("R/00-utils.R")
 
@@ -49,9 +50,10 @@ spp_regions <- distinct(dat, species, region) |>
     mutate(n_regions = n()) |>
     ungroup()
 
-.spatial <- "on"
-.spatiotemporal <- "iid"
+# Setup files/dirs
+# ---------------
 tag <- ""
+
 dc <- here::here("data", "raw")
 out_dir <- here::here("data-outputs", "multi-species")
 fit_dir <- here::here("data-outputs", "multi-species", paste0("fits", tag))
@@ -60,6 +62,10 @@ dir.create(fit_dir, showWarnings = FALSE, recursive = TRUE)
 # ------------------------------------------------------------------------------
 # Prep modelling inputs
 # ----------------------
+overwrite_cache <- FALSE
+run_trouble_fits <- FALSE
+.spatial <- "on"
+.spatiotemporal <- "iid"
 survey_dat <- dat
 cutoff <- 8
 regions <- c("SYN WCVI", "GOA", "HS-QCS")
@@ -101,7 +107,6 @@ saveRDS(lu_df, file.path(out_dir, "lu-df.rds"))
 tofit <- tofit  |> filter(.region %in% regions) # only fit the big three
 
 # overwrite_cache <- TRUE
-overwrite_cache <- FALSE
 future::plan(future::multisession, workers = 8)
 progressr::with_progress({
   handler <- progressr::progressor(along = tofit$.id)
@@ -131,6 +136,7 @@ progressr::with_progress({
 # ------------------------------------------------------------------------------
 # Look at trouble fits
 # ------------------------------------------------------------------------------
+if (run_trouble_fits) {
 library(ggplot2)
 
 trouble_fits <- tofit |>
@@ -212,31 +218,4 @@ trouble_fits |>
     saveRDS(f, sp_file)
   })
 beep()
-
-
-f <- list.files(scaled_fit_dir)
-
-w_goa_10 <- readRDS(file.path(scaled_fit_dir, "walleye-pollock-GOA-delta-gengamma-10.rds"))
-w_bc_10 <- readRDS(file.path(scaled_fit_dir, "walleye-pollock-HS-QCS-delta-gengamma-10.rds"))
-
-w_goa_100 <- readRDS(file.path(scaled_fit_dir, "walleye-pollock-GOA-delta-gengamma-100.rds"))
-w_bc_100 <- readRDS(file.path(scaled_fit_dir, "walleye-pollock-HS-QCS-delta-gengamma-100.rds"))
-
-sanity(w_goa_10)
-sanity(w_bc_10)
-
-sanity(w_goa_100)
-sanity(w_bc_100)
-
-p_pred <- get_pred(fit = pollock)
-p_i <- get_index(p_pred, area = 4, bias_correct = TRUE) |>
-  mutate(fname = "pollock-SYN HS-delta-gengamma", type = "standard") |>
-  left_join(lu_df)
-
-p_i |>
-  group_by(fname) |>
-  summarise(mean_ind_cv = mean(sqrt(exp(se^2) - 1)))
-
-survey_dat |> filter(species == "walleye pollock", survey_abbrev == "SYN HS") |>
-pull(catch_weight) |> max()
-
+}
