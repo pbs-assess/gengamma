@@ -81,7 +81,7 @@ fit_all <- function(.dat, .species, .region, .family, .spatial, .spatiotemporal)
 }
 
 cores <- availableCores()
-plan(multisession, workers = min(cores, 50L))
+plan(multicore, workers = min(cores, 50L))
 
 out <- docv |>
   # filter(.region == "GOA") |>
@@ -92,7 +92,7 @@ out <- docv |>
     if (!file.exists(fname)) {
       message("Running: ", fname)
       out <- fit_all(.dat = survey_dat, .species, .region, .family, .sp_list, .st_list)
-      # saveRDS(out, fname)
+      saveRDS(out, fname)
     }
   })
 future::plan(future::sequential)
