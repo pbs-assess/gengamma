@@ -75,7 +75,7 @@ fit_all <- function(.dat, .species, .region, .family, .spatial, .spatiotemporal)
       region = unique(.dat$region),
       species = unique(.dat$species),
       sumloglik = NA_real_,
-      foldloglik = "",
+      foldloglik = ""
     )
   }
 }
