@@ -7,7 +7,7 @@ library(sdmTMB)
 library(dplyr)
 library(future)
 
-cv_dir <- here::here("data-outputs", "cv")
+cv_dir <- here::here("data-outputs", "cv-50")
 dir.create(cv_dir, showWarnings = FALSE)
 
 lu_df <- readRDS(file.path(here::here("data-outputs", "multi-species", "lu-df.rds"))) |>
@@ -75,7 +75,7 @@ fit_all <- function(.dat, .species, .region, .family, .spatial, .spatiotemporal)
       region = unique(.dat$region),
       species = unique(.dat$species),
       sumloglik = NA_real_,
-      foldloglik = "",
+      foldloglik = ""
     )
   }
 }
@@ -102,4 +102,4 @@ cv <- lapply(list.files(cv_dir, full.names = TRUE), readRDS) |>
   bind_rows() #|>
 # filter(!(species %in% c("petrale sole", "walleye pollock")))
 
-saveRDS(cv, here::here("data-outputs", "cv-summary-df.rds"))
+saveRDS(cv, here::here("data-outputs", "cv-summary-df-50.rds"))
