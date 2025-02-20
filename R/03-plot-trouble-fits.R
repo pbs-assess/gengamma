@@ -132,7 +132,7 @@ pind <- summary_df |>
          lwr = ifelse(fix_type == "Scaled catch", lwr * scale_factor, lwr),
          upr = ifelse(fix_type == "Scaled catch", upr * scale_factor, upr)) |>
   #mutate(family = factor(family, levels = family_levels)) |>
-  bind_rows()
+  # bind_rows()
   mutate(aic_w_text = ifelse(is.na(aic_w), "\u2013 ", paste0(round(aic_w * 100), "%"))) |>
   group_by(species, region, family, fix_type) |>
   mutate(est = est * log(1e5), upr = upr * log(1e5), lwr = lwr * log(1e5)) |>

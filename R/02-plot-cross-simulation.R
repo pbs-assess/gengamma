@@ -23,8 +23,7 @@ plot_violin <- function(.data, .x, .ncol = NULL,
     scale_color_manual(values = family_colours_no_delta) +
     facet_wrap(~title, ncol = .ncol) +
     guides(colour = "none") +
-    theme(
-          strip.text.x = ggtext::element_markdown())
+    theme(strip.text.x = ggtext::element_markdown())
 }
 
 plot_linedot <- function(.data, .x, .ncol = NULL, xint = 0.95) {
@@ -34,7 +33,8 @@ plot_linedot <- function(.data, .x, .ncol = NULL, xint = 0.95) {
     geom_vline(xintercept = xint, linetype = "dashed") +
     scale_color_manual(values = family_colours_no_delta) +
     facet_wrap(~title, ncol = .ncol) +
-    guides(colour = "none")
+    guides(colour = "none") +
+    theme(strip.text.x = ggtext::element_markdown())
 }
 
 relevel_fit_family <- function(df, fam_levels = c("gengamma", "tweedie", "gamma", "lognormal")) {
@@ -204,12 +204,30 @@ aic_weight <- main_text_df |>
     x.sec = guide_none(title = "Simulated"),
     y = guide_axis(title = "Fitted")
   ) +
-  theme(axis.title.x = element_text(vjust = -1, size = 14),
+  theme(axis.title.x = element_text(vjust = -1, size = 14, margin = margin(0, 0, 10, 2)),
         axis.title.x.top = element_text(vjust = 1, size = 12))
 
-((re / aic_weight) + plot_annotation(tag_levels = 'a', tag_suffix = ")")) &
+ci_coverage <- main_text_df |>
+  filter_plot_df(apply_filter = apply_filter) |>
+  group_by(title, fit_family, Q, cv, sigma_O, sim_family) |>
+  summarise(
+    n_sanity_pass = n(),
+    prop_covered = sum(covered_50) / n_sanity_pass
+  ) |>
+  mutate(xtitle = paste0("cv = ", cv, "\nsigma_O = ", sigma_O)) |>
+  plot_linedot(.x = prop_covered, .ncol = 10, xint = 0.5) +
+  scale_x_continuous(breaks = c(0, 0.25, 0.5), labels = c(0, 0.25, 0.5)) +
+  guides(x = guide_axis(title = "CI coverage"),
+    x.sec = guide_none(title = "Simulated"),
+    y = guide_axis(title = "Fitted")
+  ) +
+  theme(axis.title.x = element_text(vjust = -1, size = 14),
+        axis.title.x.top = element_text(vjust = 1, size = 12)
+        )
+
+((re / aic_weight / ci_coverage) + plot_annotation(tag_levels = 'a', tag_suffix = ")")) &
   theme(plot.tag.position  = c(0, .9))
-ggsave(width = 8, height = 5, filename = file.path(fig_dir, "../figure-3-cross-sim-RE-AIC-weight.png"))
+ggsave(width = 8, height = 7, filename = file.path(fig_dir, "../figure-3-cross-sim-RE-AIC-CI-weight.png"))
 
 # ------
 

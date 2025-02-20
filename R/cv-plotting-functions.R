@@ -27,24 +27,30 @@ plot_aic <- function(dat) {
           strip.text.y = element_text(face = "bold"))
 }
 
-plot_cv <- function(dat) {
+plot_cv <- function(dat, centre_min = TRUE) {
+  scaler <- 1
+  xlabels <- c("> 400", "250", "0")
+  if (!centre_min) {
+    scaler <- -1
+    xlabels <- c("> -400", "-250", "0")
+  }
   bp +
     geom_tile(
       data = dat,
       mapping = aes(
-        x = 1, y = fspecies2,
+        x = scaler, y = fspecies2,
         width = Inf, height = 1, fill = factor(odd_species2)
     )) +
     geom_point(
       data = dat,
-      aes(x = pmin(-1 * diff_ll, -500), y = fspecies2, colour = family, shape = family),
+      aes(x = scaler * pmin(diff_ll, 500), y = fspecies2, colour = family, shape = family),
       stroke = 0.75, size = 1.75, position = ggstance::position_dodgev(height = 0.8)
     )  +
     scale_colour_manual(values = family_colours) +
     scale_shape_manual(values = family_shapes) +
-    scale_x_continuous(breaks = c(-400, -200, 0),
+    scale_x_continuous(breaks = scaler * c(400, 200, 0),
       labels = c("> -400", "-250", "0"),
-      limits = c(-420, 0)) +
+      limits = sort(scaler * c(500, 0))) +
     labs(x = "abs(sumLL diff)", y = "Species",
       shape = "Family",
       colour = "Family") +
@@ -86,7 +92,7 @@ plot_n <- function(dat) {
     )) +
     geom_text(data = filter(dat, family == "delta-gengamma"),
       # aes(x = 1, y = fspecies2, label = paste0("(", count, ")")),
-      aes(x = 1, y = fspecies2, label = count),
+      aes(x = 1, y = fspecies2, label = format(round(rate, 2), nsmall = 2)),
       hjust = 1, size = 3, colour = "grey50") +
     theme(axis.text.y = element_blank(),
           axis.text.x = element_text(colour = "white"), #element_blank(),
