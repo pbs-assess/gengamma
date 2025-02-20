@@ -263,7 +263,7 @@ aic_weight_supp
 
 ggsave(filename = file.path("figures", "supp", paste0("aic_weight", tag, ".png")), width = 11, height = 2.5)
 
-ci_coverage <-
+ci_coverage_supp <-
   plot_df |>
   filter_supp() |>
   group_by(title, fit_family, Q, cv, sigma_O, sim_family) |>
@@ -281,7 +281,7 @@ ci_coverage <-
   theme(axis.title.x = element_text(vjust = -1, size = 14),
         axis.title.x.top = element_text(vjust = 1, size = 12),
         axis.text.x = element_text(size = 10))
-ci_coverage
+ci_coverage_supp
 ggsave(filename = file.path("figures", "supp", paste0("ci-coverage", tag, ".png")), width = 11, height = 2.5)
 
 ci_width <-

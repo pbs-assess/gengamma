@@ -76,7 +76,7 @@ saveRDS(dat_out, here::here("data", "clean-survey-data.rds"))
 spp <- c(
   "shortspine thornyhead",
   "rex sole",
-  "longnose skate",
+  # "longnose skate", # never caught in GOA
   "arrowtooth flounder",
   "dover sole",
   "petrale sole",

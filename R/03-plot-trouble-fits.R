@@ -68,7 +68,7 @@ rqr_df <- bind_rows(
   left_join(lu_df) |>
   mutate(family = factor(family, levels = family_levels)) |>
   mutate(family = forcats::fct_recode(family, "Tweedie" = "tweedie")) |>
-  mutate(fix_type = case_when(priors == TRUE ~ "Prior on year effect",
+  mutate(fix_type = case_when(priors == TRUE ~ "Penalty on year effect",
                              is.numeric(scale_factor) ~ "Scaled catch"))
 
 # indices of models that converged
@@ -92,7 +92,7 @@ index_df <- bind_rows(
 
 summary_df <-
   left_join(fit_ests, sanity_df) |>
-  mutate(fix_type = case_when(priors == TRUE ~ "Prior on year effect",
+  mutate(fix_type = case_when(priors == TRUE ~ "Penalty on year effect",
                              is.numeric(scale_factor) ~ "Scaled catch")) |>
   group_by(species, region, fix_type) |>
   mutate(
@@ -430,7 +430,6 @@ filter(ln_phi_df, fit_family == "Gamma", type == "standard", region == "SYN WCVI
 #     aes(x = family_id, y = forcats::fct_rev(species), colour = family), shape = 21) +
 #   scale_x_continuous(trans = "log10") +
 #   facet_wrap(~ region, ncol = 3)
-# # Question: do we ever fit delta models where spatial or spatiotemporal setting is different?
 
 # Compare aic results of the models where we used a prior
 tr_df_dir <- file.path("data-outputs/multi-species/", 'priors')
@@ -459,7 +458,7 @@ test <- aic_df |>
   mutate(family = factor(family, levels = family_levels))
 
 test |>
-  mutate(priors = ifelse(priors, "Prior", "No prior")) |>
+  mutate(priors = ifelse(priors, "Penalty", "No prior")) |>
 ggplot() +
   gfplot::theme_pbs(base_size = 12) +
   facet_wrap(~priors, ncol = 3, drop = FALSE) +

@@ -131,7 +131,7 @@ aic_df <- summary_df |>
   ungroup()
 
 aic_plot_df <- aic_df |>
-  mutate(species = gsub("north", "", species)) |>
+  mutate(species = gsub("north ", "", species)) |>
   mutate(species = stringr::str_to_title(species)) |>
   mutate(
     species_id = as.numeric(factor(species)),
@@ -149,6 +149,7 @@ aic_plot_df <- aic_df |>
   mutate(family = forcats::fct_recode(family, Tweedie = "tweedie")) |>
   mutate(fregion = factor(gsub("SYN ", "", region), levels = c("GOA", "HS", "QCS", "HS-QCS", "WCVI"))) |>
   filter(fregion %in% c("GOA", "HS-QCS", "WCVI"))
+saveRDS(aic_plot_df, file.path(df_dir, "aic-plot-df.rds"))
 
 aic_w_plot <- ggplot() +
   gfplot::theme_pbs(base_size = 12) +
@@ -204,7 +205,6 @@ filter(#species %in% c("arrowtooth flounder", "shortespine thornyhead", "rex sol
 mutate(diff = estimate_phi - est_q) |>
 arrange(abs(diff))
 # when difference between sigma and estimated Q was smallest in WCVI and HS-QCS
-
 
 # Plot indices
 # -----------------
@@ -309,6 +309,8 @@ p1 <- p1 +
     aes(ymin = lwr, ymax = upr, fill = family), alpha = 0.05) +
   geom_rect(data = pind |> filter((family == "tweedie" & species == "Pacific Spiny Dogfish")) |> distinct(),
     aes(xmin = 1990, xmax = 2023, ymin = 104e6, ymax = 120e6), fill = "white") +
+  geom_hline(data = pind |> filter((family == "tweedie" & species == "Pacific Spiny Dogfish")) |> distinct(),
+    aes(yintercept = 104e6), colour = "grey85") +
   geom_text(data = distinct(pind, species, family, region, aic_w_text, ymax, .keep_all = TRUE),
             aes(x = x, y = ymax, label = aic_w_text, colour = family)) +
   facet_wrap_custom(species ~ ., scales = "free_y", ncol = 1,
@@ -667,7 +669,6 @@ filter(ln_phi_df, fit_family == "Gamma", type == "standard", region == "SYN WCVI
 #     aes(x = family_id, y = forcats::fct_rev(species), colour = family), shape = 21) +
 #   scale_x_continuous(trans = "log10") +
 #   facet_wrap(~ region, ncol = 3)
-# # Question: do we ever fit delta models where spatial or spatiotemporal setting is different?
 
 # Compare aic results of the models where we used a prior
 tr_df_dir <- file.path("data-outputs/multi-species/", 'priors')
