@@ -26,29 +26,31 @@ spp <- c(
 
 # Load data
 # ---------------
-bc_dat <- readRDS(here::here("data", "clean-survey-data.rds")) |>
-  filter(region != "SYN WCHG") |>
-  #filter(prop_pos >= 0.2) |>
-  group_by(species) |>
-  mutate(n_regions = n()) |>
-  ungroup() |>
-  filter(species %in% spp)
+if (file.exists(here::here("data", "clean-survey-data.rds")) &&
+      file.exists(here::here("data", "clean-afsc-data.rds"))) {
+  bc_dat <- readRDS(here::here("data", "clean-survey-data.rds")) |>
+    filter(region != "SYN WCHG") |>
+    filter(species %in% spp)
 
-goa_dat <- readRDS(here::here("data", "clean-afsc-data.rds")) |>
-  mutate(longitude = lon_start, latitude = lat_start)
+  goa_dat <- readRDS(here::here("data", "clean-afsc-data.rds")) |>
+    mutate(longitude = lon_start, latitude = lat_start)
 
-dat <- bind_rows(
-  bc_dat |> filter(prop_pos >= 0.2),
-  goa_dat
+  dat <- bind_rows(
+    bc_dat |> filter(prop_pos >= 0.2),
+    goa_dat
   ) |>
-  filter(!(region %in% c("SYN HS", "SYN QCS")))
-saveRDS(dat, here::here("data-outputs", "data-used.rds"))
+    filter(!(region %in% c("SYN HS", "SYN QCS"))) |>
+    select(-itis, -stratum, -lat_start, -lon_start, -effort)
+  saveRDS(dat, here::here("data-outputs", "data-used.rds"))
+} else {
+  dat <- readRDS(here::here("data-outputs", "data-used.rds"))
+}
 
 spp_regions <- distinct(dat, species, region) |>
   rename(.species = "species", .region = "region") |>
-    group_by(.species) |>
-    mutate(n_regions = n()) |>
-    ungroup()
+  group_by(.species) |>
+  mutate(n_regions = n()) |>
+  ungroup()
 
 # Setup files/dirs
 # ---------------
