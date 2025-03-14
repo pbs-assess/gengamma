@@ -11,31 +11,8 @@ dir.create(here::here("figures", "multi-species"), showWarnings = FALSE, recursi
 df_dir <- here::here("data-outputs", "multi-species")
 
 family_levels <- c(
-  "delta-lognormal", "delta-gamma", "tweedie", "delta-gengamma"#,
-  #"delta-lognormal-poisson-link", "delta-gamma-poisson-link", "delta-gengamma-poisson-link"
+  "delta-lognormal", "delta-gamma", "tweedie", "delta-gengamma"
 )
-
-# https://mk.bcgsc.ca/colorblind/palettes/8.color.blindness.palette.txt
-# family_colours <- c(
-#   "tweedie" = "#F748A5", # 'barbie pink'
-#   "delta-lognormal" = "#359B73", #' ocean green'
-#   "delta-gamma" = "#d55e00", # 'bamboo'
-#   "delta-gengamma" = "#2271B2" #' honolulu blue'
-# )
-# family_colours <- c(
-#   "tweedie" = "#2271B2", #' honolulu blue'
-#   "delta-lognormal" = "#009F81", #'jeepers creepers'
-#   "delta-gamma" = "#d55e00", # 'bamboo'
-#   "delta-gengamma" = "#9f0162" # 'jazzberry jam'
-# )
-# family_shapes <- c('tweedie-not-converged' = 0,
-#                    'delta-lognormal-not-converged' = 1,
-#                    'delta-gamma-not-converged' = 2,
-#                    'delta-gengamma-not-converged' = 5,
-#                    'tweedie' = 15,
-#                    'delta-lognormal' = 16,
-#                    'delta-gamma' = 17,
-#                    'delta-gengamma' = 18)
 
 spp_list <- gfsynopsis::get_spp_names() |>
   select(species = species_common_name, species_code, species_science_name)
@@ -151,56 +128,11 @@ aic_plot_df <- aic_df |>
   filter(fregion %in% c("GOA", "HS-QCS", "WCVI"))
 saveRDS(aic_plot_df, file.path(df_dir, "aic-plot-df.rds"))
 
-aic_w_plot <- ggplot() +
-  gfplot::theme_pbs(base_size = 12) +
-  facet_wrap(~fregion, ncol = 3, drop = TRUE) +
-  geom_tile(
-    data = aic_plot_df,
-    mapping = aes(
-      x = 1, y = fspecies2,
-      width = Inf, height = 1, fill = factor(odd_species2)
-    )
-  ) +
-  scale_fill_manual(values = c("grey95", "white")) +
-  geom_point(
-    data = aic_plot_df |> filter(all_ok), # models that converged
-    aes(x = aic_w, y = species, colour = family, shape = family),
-    stroke = 0.75, size = 2, position = ggstance::position_dodgev(height = 0.8)
-  )  +
-  scale_colour_manual(values = family_colours) +
-  scale_shape_manual(values = family_shapes) +
-  scale_x_continuous(breaks = c(0, 0.25, 0.5, 0.75, 1),
-    labels = scales::label_percent(suffix = ""),
-    limits = c(0, 1.27)) +
-  annotate(geom = "text", x = 1.25, y = length(unique(aic_plot_df$species)),
-           vjust = -3, hjust = 0.75, label = "Q", colour = "grey30") +
-  geom_text(data = filter(aic_plot_df, family == "delta-gengamma"),
-    aes(x = 1.25, y = fspecies2, label = round(est_q, digits = 1)),
-    hjust = 0.75, size = 3, colour = "grey50") +
-  labs(x = "AIC weight (%)", y = "Species",
-       shape = "Family",
-       colour = "Family") +
-  guides(fill = "none") +
-  coord_cartesian(clip = "off") +
-  theme(axis.title.y = element_blank(),
-        axis.title.x = element_text(vjust = 0),
-        axis.text = element_text(size = 9),
-        panel.spacing.x = unit(0.2, "lines"),
-        panel.border = element_rect(fill = NA, linewidth = 0.5),
-        legend.title = element_blank(),
-        legend.position = "top",
-        legend.margin = margin(0, 0, -0.3, 0, "cm"))
-aic_w_plot
-ggsave(aic_w_plot, width = 7.5, height = 7.5, filename = file.path("figures", "figure-4-aic-weight.png"))
-
 # Used this to look at how close Q is to sigma:
 aic_df |>
 select(species, region, fit_family, estimate_phi, est_q, est_qse, std_error_phi, estimate_range) |>
-filter(#species %in% c("arrowtooth flounder", "shortespine thornyhead", "rex sole", "dover sole"),
-      #fit_family %in% c("Gamma", "gengamma"),
-      fit_family == "gengamma",
+filter(fit_family == "gengamma",
       region == "GOA"
-      #region %in% c("HS-QCS", "SYN WCVI")
       ) |>
 mutate(diff = estimate_phi - est_q) |>
 arrange(abs(diff))
@@ -231,12 +163,10 @@ scaled_design <- design_df |>
 pind <- index_df |>
   right_join(index_sanity) |>
   left_join(select(aic_df, fname, estimate_phi, min_aic:aic_w)) |>
-  # filter(family != "tweedie") |>
   filter(species %in% index_species, region %in% index_region) |>
   mutate(family = factor(family, levels = family_levels)) |>
   mutate(aic_w_text = paste0(round(aic_w * 100), "%")) |>
   group_by(species, region, family) |>
-  #mutate(est = est * log(1e5), upr = upr * log(1e5), lwr = lwr * log(1e5)) |> # this was for BC data because offset was scaled by log(1e5)
   mutate(est = est * 1e2, upr = upr * 1e2, lwr = lwr * 1e2) |> # needed because effort is in ha, but grid is in km2
   mutate(geo_mean = exp(mean(log(est)))) |>
   mutate(
@@ -290,14 +220,6 @@ p1 <- ggplot(data = pind |> filter(!(family == "tweedie" & species == "Pacific S
                      expand = expansion(mult = c(0, 0.1), add = c(-1, 0))) +
   scale_x_continuous(expand = expansion(mult = c(0, 0), add = c(0.2, 0.2))) +
   labs(x = "Year", y = "Biomass index (x 10 000 000)") +
-  # geom_pointrange(
-  #   data = design_df |>
-  #     filter(species %in% index_species, region %in% index_region) |>
-  #     mutate(species = gsub("north ", "", species)) |>
-  #     mutate(species = stringr::str_to_title(species)) |>
-  #     mutate(species = factor(species, levels = levels(pind$species))),
-  #   mapping = aes(x = year, y = est, ymin = lwr, ymax = upr),
-  #   size = 0.5) +
   guides(colour = "none", fill = "none") +
   facet_wrap(species ~ ., scales = "free_y", ncol = 1)
 
@@ -362,6 +284,9 @@ p2 <- rqr_df |>
 }
 
 ggsave(width = 9.180851, height = 6.631579, filename = file.path("figures", "figure-5-index-rqr.png"))
+ggsave(width = 9.180851, height = 6.631579, filename = file.path("figures", "figure-5-index-rqr.pdf"))
+ggsave(width = 9.180851, height = 6.631579, device = cairo_ps,
+       filename = file.path("figures", "figure-5-index-rqr.eps"))
 
 
 # All indices - species & regions
@@ -504,61 +429,6 @@ plot_all_spp_index(
 #       legend.spacing.y = unit(2, "cm"),
 #       legend.direction = "vertical")
 ggsave(width = 8.5, height = 9.3, filename = here::here("figures", "supp", "index-wcvi.png"))
-
-# Compare scale of design and model # TODO: I think I can delete this section
-# -----------------------------------
-# Could scale them all to the design based index - and then you would see bias based how far
-# off from 1
-# p3 <- ggplot(data = pind, aes(x = year, y = est, group = family)) +
-#   geom_line(aes(colour = family)) +
-#   geom_pointrange(data = design_df |> filter(species %in% index_species, region %in% index_region) |>
-#     mutate(species = stringr::str_to_title(species)),
-#     mapping = aes(x = year, ymin = lwr / 1e5, ymax = upr)) +
-#   geom_ribbon(aes(ymin = lwr, ymax = upr, fill = family), alpha = 0.1) +
-#   geom_text(data = distinct(pind, species, family, region, aic_w_text, ymax, .keep_all = TRUE),
-#     aes(x = x, y = ymax, label = aic_w_text, colour = family)) +
-#   scale_y_continuous() +
-#   facet_grid(species ~ region, scales = "free_y") +
-#   scale_colour_manual(values = family_colours) +
-#   scale_fill_manual(values = family_colours) +
-#   theme(legend.position = c(2010, 1e5))
-
-# p4 <- rqr_df |>
-#   filter(species %in% index_species, region %in% index_region) |>
-#   left_join(select(aic_df, species, family, fname, q_rank)) |>
-#   mutate(fit_family = factor(tolower(fit_family), gsub("delta-", "", family_levels))) |>
-#   mutate(fit_family = forcats::fct_recode(fit_family, Tweedie = "tweedie")) |>
-#   mutate(species = factor(species)) |>
-#   mutate(species = forcats::fct_reorder(species, order(q_rank, decreasing = TRUE))) |>
-#   ggplot(aes(sample = r)) +
-#   geom_qq() +
-#   geom_abline(intercept = 0, slope = 1) +
-#   facet_grid(species ~ fit_family, switch = "y") +
-#   #facet_wrap(species ~ fit_family, labeller = labeller(.multi_line = FALSE)) +
-#   coord_fixed(xlim = c(-4, 4), ylim = c(-5.3, 5.3)) +
-#   #lims(x = c(-6, 6), y = c(-6, 6)) +
-#   scale_x_continuous(breaks = seq(-6, 6, by = 2), labels = seq(-6, 6, by = 2)) +
-#   scale_y_continuous(breaks = seq(-6, 6, by = 2), labels = seq(-6, 6, by = 2), position = "right",) +
-#   labs(x = "Theoretical", y = "Sample") +
-#   theme(plot.margin = margin(c(0.5, 0, 0.5, 0.5)),
-#         strip.text.y = element_blank(),
-#         strip.text.x = element_text(),
-#         panel.spacing.y = unit(1.6, "lines"),
-#         panel.spacing.x = unit(0, "lines")
-#   )
-
-# # see: https://github.com/tidyverse/ggplot2/issues/2096#issuecomment-389825118
-# g <- ggplot_gtable(ggplot_build(p4))
-# stript <- which(grepl('strip-t', g$layout$name))
-# fills <- rep(scales::alpha(family_colours[family_levels], alpha = 0.3), 3)
-# k <- 1
-# for (i in stript) {
-#   j <- which(grepl('rect', g$grobs[[i]]$grobs[[1]]$childrenOrder))
-#   g$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- fills[k]
-#   k <- k+1
-# }
-# p3 + wrap_elements(full = g) + plot_layout(widths = c(0.4, 0.8))
-
 
 # Get ratio of model-based index / design-based index - like surprising scale paper
 # ------------------------------

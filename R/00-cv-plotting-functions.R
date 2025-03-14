@@ -18,7 +18,7 @@ plot_aic <- function(dat) {
       labels = scales::label_percent(suffix = ""),
       limits = c(0, 1)) +
       # limits = c(0, 1.27)) +
-    labs(x = "AIC weight (%)", y = "Species",
+    labs(x = parse(text = "AIC~weight~(`%`)"), y = "Species",
       shape = "Family",
       colour = "Family") +
     guides(colour = "none", fill = "none", shape = "none") +

@@ -39,7 +39,6 @@ sim_fit <- function(predictor_dat, mesh_sim,
   # Being explicit here so that I don't confuse myself
   b0_bin <- b0_pos <- b0
   b0_tw <- log(plogis(b0_bin) * exp(b0))
-  # QUESTION: Does the seed need to be the same for the binom_sim component and the positive component?
   # Simulate from binomial
   binom_sim <- sdmTMB_simulate(
     formula = ~1,
@@ -69,7 +68,6 @@ sim_fit <- function(predictor_dat, mesh_sim,
     sigma_O = sigma_O, # #sigma_O = 0.2,; SD of spatial process (Omega)
     # seed = 42,
     B = c(b0) # B0 = intercept, B1 = a1 slope;  A vector of beta values (fixed-effect coefficient values).
-    # B = c(0.2, -0.4) # B0 = intercept, B1 = a1 slope
   ) |>
     mutate(
       family = "lognormal", link = "log", cv = cv,
@@ -87,8 +85,7 @@ sim_fit <- function(predictor_dat, mesh_sim,
     summarise(biomass = sum(encounter_mu * mu))
 
   sampled <- sample_n(sim_dat, size = sample_size)
-  # QUESTION: How many samples should be drawn?
-  # I was looking at coverage from the real surveys which is ~5% of the survey grid / year (I think??)
+  # I was looking at coverage from the real surveys which is ~5% of the survey grid / year
   sampled_mesh <- make_mesh(sampled, c("X", "Y"), cutoff = 0.1)
   # plot(sampled_mesh[[1]])
 
@@ -407,7 +404,6 @@ saveRDS(rqr_df, file.path(here::here("data-outputs", "cross-sim", paste0('rqr-',
 # Self check on gg Q estimation
 # ------------------------------------------------------------------------------
 # Slow; also note that sanity check fails if Q is very negative, e.g., I tested with Q = -5
-# FIXME This is currently broken
 run_self_check <- FALSE
 if (run_self_check) {
   local({

@@ -5,7 +5,7 @@ library(patchwork)
 
 theme_set(gfplot::theme_pbs(base_size = 12))
 source(here::here("R", "00-utils.R"))
-source(here::here("R", "cv-plotting-functions.R"))
+source(here::here("R", "00-cv-plotting-functions.R"))
 
 # k <- 25
 k <- 50
@@ -135,17 +135,16 @@ p4_hs <- plot_n(hs_df) +
 
 # -- WCVI
 p1_wcvi <-
-plot_aic(wcvi_df) +
-  theme(axis.title.x = ggtext::element_markdown())
+plot_aic(wcvi_df)
   # ggtitle("WCVI") +
   # theme(plot.title.position = "plot")
 p2_wcvi <-
 plot_cv(wcvi_df, centre_min) +
   theme(axis.text.y = element_blank()) +
-  xlab("&Delta; log(*L*) of out-of-sample") +
-  theme(axis.title.x = ggtext::element_markdown())
+  xlab(parse(text = "Delta~log(italic(L))~of~`out-of-sample`"))
 p3_wcvi <- plot_q(wcvi_df) +
-  xlab("Q") +
+  xlab(parse(text = "Q")) +
+  theme(axis.title.x = element_text(vjust = -1.5)) +
   invis_x_axis()
   # theme(axis.text.x = element_text(colour = "black"),
   #       axis.title.x = element_text())
@@ -226,7 +225,9 @@ legend_row +
 }
 
 # ggsave(here::here("figures", "figure-4-option2-annual-encounter.png"), width = 7.86, height = 11.9)
-ggsave(here::here("figures", filename), width = 6.7, height = 9)
+# ggsave(here::here("figures", filename), width = 6.7, height = 9)
+ggsave(here::here("figures", "figure-4-50-fold.png"), width = 6.7, height = 9)
+ggsave(here::here("figures", "figure-4-50-fold.pdf"), width = 6.7, height = 9)
 # if (k == 50) ggsave(here::here("figures", "figure-4-50-fold.png"), width = 6.7, height = 9)
 
 

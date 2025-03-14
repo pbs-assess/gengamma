@@ -6,7 +6,7 @@ library(ggtext)
 library(ggh4x)
 
 theme_set(
-  theme_light(base_size = 12) +
+  theme_light(base_size = 11) +
     theme(strip.background = element_rect(fill = "grey95"),
           strip.text = element_text(colour = "black"))
 )
@@ -21,9 +21,11 @@ plot_violin <- function(.data, .x, .ncol = NULL,
     geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50") +
     stat_summary(fun = .summary_fun, geom = "point", colour = "black") +
     scale_color_manual(values = family_colours_no_delta) +
-    facet_wrap(~title, ncol = .ncol) +
+    facet_wrap(~title, ncol = .ncol, labeller = label_parsed) +
     guides(colour = "none") +
-    theme(strip.text.x = ggtext::element_markdown())
+    theme(panel.spacing = unit(0.07, "cm"),
+          plot.margin = margin(0.5, 0, 0, 0, "cm"),
+          strip.clip = "off")
 }
 
 plot_linedot <- function(.data, .x, .ncol = NULL, xint = 0.95) {
@@ -32,10 +34,13 @@ plot_linedot <- function(.data, .x, .ncol = NULL, xint = 0.95) {
     geom_point(size = 3) +
     geom_vline(xintercept = xint, linetype = "dashed") +
     scale_color_manual(values = family_colours_no_delta) +
-    facet_wrap(~title, ncol = .ncol) +
+    facet_wrap(~title, ncol = .ncol, labeller = label_parsed) +
     guides(colour = "none") +
-    theme(strip.text.x = ggtext::element_markdown())
+    theme(panel.spacing = unit(0.07, "cm"),
+          plot.margin = margin(0.5, 0, 0, 0, "cm"),
+          strip.clip = "off")
 }
+
 
 relevel_fit_family <- function(df, fam_levels = c("gengamma", "tweedie", "gamma", "lognormal")) {
   df |>
@@ -81,7 +86,7 @@ tag <- ""
 apply_filter <- TRUE
 
 title_lu <- tibble(
-  title = c("gengamma (Q = -1)", "lognormal (Q = 0)", "gamma (Q = &sigma;)", "tweedie", "gengamma (Q = 2)"),
+  title = c("gengamma~(Q==-1)", "lognormal~(Q==0)", "'gamma'~(Q==sigma)", "Tweedie", "gengamma~(Q==2)"),
   sim_family = c("delta-gengamma", "delta-lognormal", "delta-gamma", "tweedie", "delta-gengamma"),
   Q = c(-1, NA, NA, NA, 2)
 )
@@ -145,33 +150,38 @@ rqr_plot <- rqr_df |>
   left_join(title_lu) |>
   filter(!is.na(title)) |>
   mutate(title = factor(title, levels = title_lu$title)) |>
-  mutate(title = forcats::fct_recode(title, "Tweedie" = "tweedie")) |>
+  mutate(fit_family = forcats::fct_recode(fit_family, "'gamma'" = "gamma")) |>
   ggplot(aes(sample = r)) +
   geom_qq() +
   geom_abline(intercept = 0, slope = 1) +
-  facet_grid(fit_family ~ title) +
+  facet_grid(fit_family ~ title, labeller = label_parsed) +
   coord_fixed() +
   scale_y_continuous(limits = c(-6.2, 6.2), breaks = seq(-6, 6, by = 2), labels = seq(-6, 6, by = 2), position = "left") +
   scale_x_continuous(limits = c(-4.6, 4.6), breaks = seq(-6, 6, by = 2), labels = seq(-6, 6, by = 2)) +
   labs(x = "Theoretical", y = "Sample") +
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
-        panel.spacing = unit(0.1, "cm"),
+        panel.spacing = unit(0.07, "cm"),
         plot.background = element_blank(),
         plot.margin = margin(0, 0, 0, 0, "cm"),
         tagger.panel.tag.background = element_blank(),
         strip.background = element_blank(),
-        strip.text.x = ggtext::element_markdown()) +
+        strip.clip = "off") +
   tagger::tag_facets()
 
-wrap_elements(plot = grid::textGrob("Simulated distribution", vjust = 0), clip = FALSE) +
+wrap_elements(plot = grid::textGrob("Simulated distribution", vjust = 0.6, hjust = 0.4,
+                                    gp = grid::gpar(fontsize = 11)),
+              clip = FALSE) +
   wrap_elements(full = rqr_plot, clip = FALSE) +
-  wrap_elements(plot = grid::textGrob("Fitted distribution", rot = 270, vjust = 1), clip = FALSE) +
-  plot_layout(widths = c(50, 0.5), heights = c(0.5, 50),
+  wrap_elements(plot = grid::textGrob("Fitted distribution",
+                                      gp = grid::gpar(fontsize = 11),
+                                      rot = 270, vjust = 0.6), clip = FALSE) +
+  plot_layout(widths = c(100, 0.1), heights = c(0.1, 100),
     design = "A#
     BC")
 
-ggsave(width = 7.3, height = 7.5, filename = file.path(fig_dir, "../figure-2-cross-sim-qq.png"))
+ggsave(width = 6.6, height = 7.2, filename = file.path(fig_dir, "../figure-2-cross-sim-qq.png"))
+ggsave(width = 6.6, height = 7.2, filename = file.path(fig_dir, "../figure-2-cross-sim-qq.pdf"))
 
 # Relative error & AIC weight
 # ---------------------------
@@ -180,8 +190,7 @@ main_text_df <-
   select(-title) |>
   left_join(title_lu) |>
   filter(!is.na(title)) |>
-  mutate(title = factor(title, levels = title_lu$title)) |>
-  mutate(title = forcats::fct_recode(title, "Tweedie" = "tweedie"))
+  mutate(title = factor(title, levels = title_lu$title))
 
 re <- main_text_df |>
   plot_violin(.x = re, .ncol = 5, .summary_fun = "median") +
@@ -190,8 +199,9 @@ re <- main_text_df |>
     x.sec = guide_none(title = "Simulated"),
     y = guide_axis(title = "Fitted")
   ) +
-  theme(axis.title.x = element_text(vjust = -1, size = 14, margin = margin(0, 0, 10, 2)),
-        axis.title.x.top = element_text(vjust = 1, size = 12))
+  theme(axis.title.x = element_text(vjust = -1, size = 12, margin = margin(0, 0, 10, 2)),
+        axis.title.x.top = element_text(vjust = 1, size = 11),
+        plot.margin = margin(0, 0, 0, 0, "cm"))
 
 # AIC weights
 aic_weight <- main_text_df |>
@@ -204,8 +214,8 @@ aic_weight <- main_text_df |>
     x.sec = guide_none(title = "Simulated"),
     y = guide_axis(title = "Fitted")
   ) +
-  theme(axis.title.x = element_text(vjust = -1, size = 14, margin = margin(0, 0, 10, 2)),
-        axis.title.x.top = element_text(vjust = 1, size = 12))
+  theme(axis.title.x = element_text(vjust = -1, size = 12, margin = margin(0, 0, 10, 2)),
+        axis.title.x.top = element_text(vjust = 1, size = 11))
 
 ci_coverage <- main_text_df |>
   filter_plot_df(apply_filter = apply_filter) |>
@@ -221,13 +231,14 @@ ci_coverage <- main_text_df |>
     x.sec = guide_none(title = "Simulated"),
     y = guide_axis(title = "Fitted")
   ) +
-  theme(axis.title.x = element_text(vjust = -1, size = 14),
-        axis.title.x.top = element_text(vjust = 1, size = 12)
+  theme(axis.title.x = element_text(vjust = -1, size = 12),
+        axis.title.x.top = element_text(vjust = 1, size = 11)
         )
 
 ((re / aic_weight / ci_coverage) + plot_annotation(tag_levels = 'a', tag_suffix = ")")) &
-  theme(plot.tag.position  = c(0, .9))
-ggsave(width = 8, height = 7, filename = file.path(fig_dir, "../figure-3-cross-sim-RE-AIC-CI-weight.png"))
+  theme(plot.tag.position  = c(0.01, .9))
+ggsave(width = 6.6, height = 7.5, filename = file.path(fig_dir, "../figure-3-cross-sim-RE-AIC-CI-weight.png"))
+ggsave(width = 6.6, height = 7.5, filename = file.path(fig_dir, "../figure-3-cross-sim-RE-AIC-CI-weight.pdf"))
 
 # ------
 
@@ -245,14 +256,14 @@ ggsave(width = 8, height = 7, filename = file.path(fig_dir, "../figure-3-cross-s
 #   ggtitle(paste0("Root mean square error ", tag))
 # ggsave(rmse, filename = file.path(fig_dir, paste0("rmse", tag, ".png")), width = 11, height = 2.5)
 
-re <- plot_df |>
-  filter_plot_df(apply_filter = apply_filter) |>
-  plot_violin(.x = re, .ncol = 10) +
-  labs(x = "Relative error", y = "Fit family") +
-  lims(x = c(-0.255, 0.7)) +
-  ggtitle(paste0("Relative error ", tag))
-re
-ggsave(re, filename = file.path(fig_dir, paste0("re", tag, ".png")), width = 11, height = 2.5)
+# re <- plot_df |>
+#   filter_plot_df(apply_filter = apply_filter) |>
+#   plot_violin(.x = re, .ncol = 10) +
+#   labs(x = "Relative error", y = "Fit family") +
+#   lims(x = c(-0.255, 0.7)) +
+#   ggtitle(paste0("Relative error ", tag)) +
+# re
+# ggsave(re, filename = file.path(fig_dir, paste0("re", tag, ".png")), width = 11, height = 2.5)
 
 # aic_weight_hist <-
 #   plot_df |>
@@ -276,7 +287,8 @@ aic_weight_supp <-
     y = guide_axis(title = "Fitted")
   ) +
   theme(axis.title.x = element_text(vjust = -1, size = 14),
-        axis.title.x.top = element_text(vjust = 1, size = 12))
+        axis.title.x.top = element_text(vjust = 1, size = 12)) +
+  facet_wrap(~title, ncol = 10)
 aic_weight_supp
 
 ggsave(filename = file.path("figures", "supp", paste0("aic_weight", tag, ".png")), width = 11, height = 2.5)
@@ -298,7 +310,8 @@ ci_coverage_supp <-
   ) +
   theme(axis.title.x = element_text(vjust = -1, size = 14),
         axis.title.x.top = element_text(vjust = 1, size = 12),
-        axis.text.x = element_text(size = 10))
+        axis.text.x = element_text(size = 10)) +
+  facet_wrap(~title, ncol = 10)
 ci_coverage_supp
 ggsave(filename = file.path("figures", "supp", paste0("ci-coverage", tag, ".png")), width = 11, height = 2.5)
 
@@ -309,7 +322,8 @@ ci_width <-
   scale_x_continuous(trans = "log10") +
   #facet_grid(xtitle ~ title) +
   labs(x = "CI Width", y = "Fit family") +
-  ggtitle(paste0("50% Confidence interval width ", tag))
+  ggtitle(paste0("50% Confidence interval coverage ", tag)) +
+  facet_wrap(~title, ncol = 10)
 ci_width
 ggsave(filename = file.path(fig_dir, paste0("ci-width", tag, ".png")), width = 11, height = 2.5)
 
