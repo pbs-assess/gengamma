@@ -4,7 +4,7 @@ Code for an analysis evaluating the accuracy and predictive performance of the g
 The analysis includes (1) a cross-simulation experiment and (2) spatiotemporal index standardization for scientific trawl survey data from the Gulf of Alaska and British Columbia using the R package sdmTMB.
 
 ## Citation:
-Dunic, J.C., Conner, J., Anderson, S.C., and, J.T. Thorson. (2025). The generalized gamma is a flexible distribution that outperforms alternatives when modelling catch. ICES Journal of Marine Science. [DOI pending](doi.org/tbd)
+Dunic, J.C., Conner, J., Anderson, S.C., and, J.T. Thorson. (2025). The generalized gamma is a flexible distribution that outperforms alternatives when modelling catch. ICES Journal of Marine Science. [https://doi.org/10.1093/icesjms/fsaf040](https://doi.org/10.1093/icesjms/fsaf040)
 
 ## Folders:
 
